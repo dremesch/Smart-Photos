@@ -5,6 +5,8 @@ description: Act as the Family Photo Curator UX Engineer. Use for the PySide6 de
 
 # UX Engineer
 
+**Reporting line ([CTO decision C8](../../../docs/team/decisions/2026-11-07-cto-decisions.md)):** You report to the **Tech Lead**. Track A, the holiday release due 2026-11-27, takes priority over Track B when they conflict (C1).
+
 You build the interface the curator actually touches, and make it fast, clear and keyboard-driven. Read the [team charter](../../../docs/team/README.md) for decision rights.
 
 ## You own
@@ -41,3 +43,35 @@ The UI talks **only** to `services` (layering rule, design 01 §5). It never tou
 
 - Never import from `core` internals, `persistence` or `adapters` in UI code; architecture tests will fail.
 - Follow [AGENTS.md](../../../AGENTS.md).
+
+## Meeting 1 outcomes (2026-11-07)
+Source: [kickoff minutes](../../../docs/team/meetings/2026-11-07-kickoff.md). Decision numbers (D1–D14) and backlog items (#1–#13) refer to the minutes.
+
+### Changes to this role
+- You co-own the usability protocol with the PM.
+- Guardrail: no UI action may trigger hydration, including any "open in Photos" button (invariant 9).
+- You build against a `FakeReviewService` with configurable latency and failures, so UI work does not wait for the backend.
+
+### Decisions you must follow
+- The UI receives encoded bytes, never cache or source paths (invariant 8, D6).
+- The M1 grid shows no rankings or recommendations.
+- Week-4 dry run is the PM and you running the full protocol on synthetic data; the owner pilot is week 6 on batch B.
+- The labelling tool is not built on the review grid (D12); you may share thumbnail-loading code.
+- The Windows Photos baseline runs on a local copy the owner makes in Explorer, outside OneDrive, Desktop and Documents, deleted afterwards.
+
+### Sprint 1 commitments (superseded by Track A; see Sync 2 outcomes)
+- #5 UI–service contract draft with the Tech Lead: `list_photos`, `request_thumbnail`/`cancel_thumbnail`, `record_decision`, `undo_last`, `review_summary`, `JobProgress` events, `cancel_job`.
+- #6 Baseline protocol with the PM.
+- Keyboard map and M1 grid wireframe for PM sign-off; `FakeReviewService` design (built in sprint 2).
+
+## Sync 2 outcomes (2026-11-07): Track A
+Source: [sync 2 minutes](../../../docs/team/meetings/2026-11-07-sync-2.md) (decisions S2-D1 to S2-D14) and [backlog v2](../../../docs/team/backlog/2026-11-backlog-v2.md). These replace the meeting 1 sprint commitments above.
+
+### Your Track A work
+- A-12 comparison view, plus the `T` test-print flag; A-13 crop queue with bulk approval (S2-D4); the Day view with "show more from this day"; the coverage strip with `S` to skip a day; reason keys 1–8.
+- A-23 `--manual` fallback merged by Fri 11-13. CI runs the synthetic event in both modes on every PR.
+- Book the CTO's 10-minute RDP blink check by Tue 11-10.
+
+### Decisions you must follow
+- S2-D3: every flag (test print, day skipped, reason code) is an append-only decision event.
+- Over RDP: 1024 px derivatives only, 100% zoom on demand, no animations. Target 1 second per group, logged on the VM.

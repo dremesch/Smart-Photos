@@ -2,19 +2,20 @@
 
 A local-first Windows desktop application for selecting, smart-cropping, and exporting family photos for 4×6 printing, without sending images or derived data to any cloud service.
 
-**Status:** Specification, high-level design and proof of concept complete. Next gate: Milestone 0 (environment and feasibility). `src/` is the production scaffold; `poc/` is throwaway reference code.
+**Status:** Two tracks. **Track A** (holiday release) hardens the POC to print Japan 2024 by 2026-12-01. **Track B** builds the production app per the spec. `src/` is the production scaffold; `poc/` is throwaway reference code.
 
 ## Documentation
 
 | | |
 |---|---|
-| [Technical Specification v1.1](docs/spec/technical-specification-v1.1.md) | Requirements; current implementation authority |
+| [Technical Specification](docs/spec/technical-specification.md) (v1.2) | Requirements; current implementation authority |
 | [High-level design](docs/design/README.md) | Architecture, data flow, sequences, technical direction |
 | [Architecture Decision Records](docs/adr/README.md) | Key decisions and their rationale |
 | [v1.0 review disposition](docs/reviews/v1.0-review-disposition.md) | Review findings and how they were resolved |
 | [Proof of concept](poc/README.md) | Working end-to-end prototype, findings, measurements |
 | [POC handoff](poc/HANDOFF.md) | Port map, contracts and work packages for the build team |
 | [AGENTS.md](AGENTS.md) | Rules for coding agents |
+| [CTO decisions](docs/team/decisions/2026-11-07-cto-decisions.md) | Two-track plan (holiday release by 2026-11-27), Azure VM, selection criteria |
 | [Team charter](docs/team/README.md) | Agent roles, decision rights, workflow and PR gate (skills in `.claude/skills/`) |
 
 ## Repository layout

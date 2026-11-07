@@ -4,7 +4,7 @@ These rules apply to every agent (and human) working in this repository.
 
 ## Read first
 
-1. [Spec v1.1](docs/spec/technical-specification-v1.1.md): what to build.
+1. [Spec](docs/spec/technical-specification.md) (v1.2) and [CTO decisions](docs/team/decisions/): what to build, including Track A (holiday release) and Track B (production).
 2. [High-level design](docs/design/README.md) and [ADRs](docs/adr/README.md): how it fits together.
 3. [POC handoff](poc/HANDOFF.md): your work package, its dependencies, and the POC code to learn from.
 4. [Team charter](docs/team/README.md): roles, decision rights, labels and the PR gate. Take on your role by invoking its skill from `.claude/skills/` (`architect`, `product-manager`, `tech-lead`, `data-scientist`, `systems-engineer`, `quality-engineer`, `ux-engineer`, `security-privacy-engineer`).
@@ -18,6 +18,7 @@ These rules apply to every agent (and human) working in this repository.
 - **All pixels come from the decoding contract** (ADR-0006). Do not call `Image.open` on source files anywhere else.
 - **Human decisions are append-only** (ADR-0008). Never update or delete a decision row.
 - **No face embeddings, face clustering or identity features.**
+- **Never read photo data** (ADR-0009): no opening, viewing or uploading of photos, thumbnails, derivatives, crops, exports or app data, whether with file tools, shell commands or scripts. `.claude/settings.json` denies Read on these; the rule also covers ways it can't block. Run pipeline commands that print aggregates only.
 - **No personal photos or model weights in git.** Use `poc/tools/make_sample_event.py` or synthetic fixtures.
 - **Models load only via an approved manifest** in `models/manifests/` (ADR-0007).
 

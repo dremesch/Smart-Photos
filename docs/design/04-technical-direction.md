@@ -33,6 +33,7 @@ The direction engineering should follow, and the reasons behind it. Detailed des
 | [0006](../adr/0006-single-image-decoding-contract.md) | Single, format-aware image decoding contract | Accepted |
 | [0007](../adr/0007-license-gated-model-registry.md) | Models loaded only from a hash- and license-verified registry | Accepted |
 | [0008](../adr/0008-sqlite-authoritative-store-append-only-decisions.md) | SQLite as the authoritative store; append-only decision log; content-addressed file cache | Accepted |
+| [0009](../adr/0009-owner-controlled-azure-vm.md) | Run on an owner-controlled Azure VM; agents never read photo data | Accepted |
 
 ---
 

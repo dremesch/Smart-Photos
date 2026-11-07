@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| **Version** | 1.1 — Engineering specification (implementation authority) |
-| **Supersedes** | v1.0 (historical baseline, draft for engineering review) |
-| **Change basis** | [v1.0 engineering review and disposition](../reviews/v1.0-review-disposition.md) |
+| **Version** | 1.2 — Engineering specification (implementation authority) |
+| **Supersedes** | v1.1 (2026-11-07); v1.0 is the historical baseline |
+| **Change basis** | [v1.0 review and disposition](../reviews/v1.0-review-disposition.md) (v1.1); [CTO decisions 2026-11-07](../team/decisions/2026-11-07-cto-decisions.md) (v1.2) |
 | **Platform** | Windows 11, x64 initially |
 | **Architecture** | Local-first desktop application |
-| **Status** | Approved for Milestone 0. Not yet validated on target hardware. |
+| **Status** | Approved. Track A (holiday release) due 2026-11-27; Track B continues per §20. Not yet validated on target hardware. |
 | **Pilot collection** | Japan 2024 |
 
 **Primary objective:** Minimize the effort required to select, intelligently crop, and prepare meaningful family photographs for printing, without compromising privacy.
@@ -37,6 +37,17 @@
 6. **Useful before sophisticated.** M1 must already let the user browse and select an event faster than Windows Photos.
 
 ---
+
+### 0.2 What changed in v1.2
+
+| # | Area | v1.1 | v1.2 |
+|---|---|---|---|
+| 1 | Delivery | M0–M4 only | Two tracks: **Track A**, a holiday release from the hardened POC, printable by 2026-12-01; **Track B**, the production app per §20 (CTO decision C1) |
+| 2 | Runtime | User's Windows PC | The owner's **Azure VM** in their own subscription; agents never read photo data (ADR-0009) |
+| 3 | Selection criteria | Generic quality and relevance | The owner's criteria: forward-facing, no blinking, sharp, decent background, no unrelated people (§8.4, §10.3) |
+| 4 | Background people | — | Heuristic penalty and crop exclusion, never identity (§8.6, §12.4) |
+| 5 | Open decisions | All open | §22.1, .5, .6, .7, .10 answered |
+| 6 | Cloud services | Prohibited | Still prohibited for Track A. An optional, owner-controlled Azure tier may be proposed after 2026-12-01 through an ADR (CTO decision C2) |
 
 ## 1. Executive Summary
 
@@ -108,7 +119,9 @@ The primary user is a parent who prioritizes meaningful moments over technical p
 | Typical source | iPhone photos, possibly from more than one family device |
 | Formats | HEIC and JPEG (HEIC may be absent if transferred as "Most Compatible") |
 | Target print | 4×6 inches |
-| Pilot | 300–500 photos (M1); full Japan 2024 event (M4) |
+| Use | Personal use by the owner and family (§22.7) |
+| Runtime | Windows 11 VM in the owner's Azure subscription (ADR-0009) |
+| Pilot | **Track A:** full Japan 2024 event, exported by 2026-11-27. **Track B:** M1 pilot and evaluation on a different event, chosen later, so labels are not biased by Track A (CTO decision C5) |
 | Typical event | Thousands of photos |
 
 Hardware, available disk, photo counts, and folder layout are established in M0.
@@ -336,10 +349,13 @@ Group by size, then SHA-256; confirm before assigning. Exact duplicates are grou
 
 Representatives are ranked using, in order of weight to be calibrated:
 
-1. Faces: all detected faces have eyes open; subject-region sharpness on faces.
-2. Provenance: original resolution and complete EXIF preferred over messaging-app or re-exported copies.
-3. Global technical quality.
-4. Composition signals.
+1. Faces: all primary faces have eyes open (no blinking) and face the camera (head pose near frontal); subject-region sharpness on faces.
+2. Background people: fewer unrelated people in the frame (§8.6), unless a crop can remove them.
+3. Provenance: original resolution and complete EXIF preferred over messaging-app or re-exported copies.
+4. Global technical quality, including a decent, uncluttered background.
+5. Composition signals.
+
+These follow the owner's definition of a "can't-lose" photo (§22.10): forward-facing family moments, no blinking, sharp, decent background, and no unrelated people unless cropped out.
 
 Each ranking stores a reason payload. Close calls mark the group `ambiguous` for selective advanced analysis (§9) or human comparison.
 
@@ -354,6 +370,15 @@ Each ranking stores a reason payload. Close calls mark the group `ambiguous` for
 | `import_error` | Could not be decoded or read |
 
 There is no label that removes a photo from ranking because of low quality. Low technical quality lowers a score; it never ends eligibility.
+
+### 8.6 Background people (heuristic, never identity)
+
+The app does not know who is family, and must not learn it: no face recognition, clustering or identity (§2.3, §16.3). Instead:
+
+- **Primary subjects** are the largest and sharpest faces and people, plus anyone close to them in the frame.
+- **Background people** are people or faces that are much smaller, less sharp, and spatially separate from the primary subjects. Thresholds are configuration owned by the Data Scientist.
+- Ranking applies a penalty for visible background people. Cropping (§12.4) tries to exclude them. Both appear in the photo's explanation.
+- The heuristic can be wrong in both directions. The owner's review decides.
 
 ---
 
@@ -392,7 +417,7 @@ where `u(i) ≥ 0` is per-photo utility, the second term is facility-location co
 
 ### 10.3 Per-photo utility
 
-`u(i)` combines visual quality, subject visibility, scene uniqueness, and a family-relevance proxy derived from observable signals (people/pet presence, category tags) and the user's own decisions. Initial weights are hypotheses.
+`u(i)` combines visual quality, subject visibility, scene uniqueness, and a family-relevance proxy derived from observable signals (people/pet presence, category tags) and the user's own decisions. For Track A it applies the owner's criteria in §8.4 directly: eyes open, frontal faces, sharpness, background quality, and a background-people penalty. There is no fixed preference between people and scenery (§22.5). Initial weights are hypotheses.
 
 ### 10.4 Preference learning
 
@@ -475,7 +500,8 @@ Crops violating the invariant are rejected at the repository layer. Property-bas
 1. Load oriented size; compute the maximal valid crop.
 2. Load protected regions: faces (from high-resolution or tiled detection on the approved photo), detected people/pets, salient regions, and user-defined regions.
 3. Evaluate crop positions exhaustively along the free axis (and a small set of zoom levels if enabled).
-4. Apply hard constraints: no clipped face when any valid position avoids it; safe margin respected where possible.
+4. Apply hard constraints: no clipped primary face when any valid position avoids it; safe margin respected where possible.
+4a. Treat background people (§8.6) as regions to exclude: prefer positions that leave them out, never at the cost of clipping a primary face.
 5. Score remaining positions (saliency coverage, protected-region margin, composition) and select the best.
 6. Classify risk and store the explanation.
 
@@ -542,10 +568,11 @@ Strip GPS, device serials/identifiers, MakerNotes, and other personal metadata b
 ```
 <export root>/Japan_2024/
   print_ready/   JPN24_0001.jpg …
-  manifests/     selection.csv, crop_decisions.json
+  manifests/     selection.csv, crop_decisions.json   (output names + opaque IDs only)
   reports/       export_summary.json
 ```
 
+- Files in the export folder list output names and opaque IDs only. Source paths, source hashes and capture times stay in the app database, because the export folder is the one handed to print labs (team meeting 1, D7).
 - Destination may not be under a source root; warned if under a OneDrive sync root (§5.4).
 - Deterministic filenames; never overwrite silently.
 - Write to a temporary file, fsync, then atomic rename on the same volume.
@@ -636,6 +663,8 @@ CPU first. Windows ML and DirectML are evaluated after the CPU baseline, against
 ### 16.1 Guarantee
 
 The application does not transmit photographs, thumbnails, embeddings, facial data, GPS, personal metadata, or event/family information. No network operation is permitted during processing. No telemetry.
+
+The privacy boundary is the **owner-controlled machine**: their PC, or their Azure VM in their own subscription (ADR-0009). Development and operations agents never read photo data; they work with aggregate outputs only (ADR-0009). Any future cloud-AI tier (for example Azure AI Vision on the owner's subscription) needs its own ADR, with opt-in per event, downscaled metadata-free inputs, result caching, cost caps, and provider data-retention reviewed (CTO decision C2).
 
 ### 16.2 Enforcement (layered)
 
@@ -769,16 +798,16 @@ Color-managed export · metadata stripping · verification · manifests · priva
 
 ## 22. Open Decisions (resolve in M0 unless noted)
 
-1. Hardware profile (CPU, RAM, GPU/NPU, disk, Windows build).
-2. OneDrive folder organization and transfer format (HEIC vs JPEG; MakerNotes present).
-3. Embedding, face, and landmark models (benchmark + license).
+1. ~~Hardware profile~~ **Answered:** Azure VM, Windows 11 x64, 8 vCPU and 32 GB RAM (minimum 4 vCPU and 16 GB), no GPU (ADR-0009).
+2. OneDrive folder organization and transfer format (HEIC vs JPEG; MakerNotes present). *Measured in the first VM run.*
+3. Embedding, face, and landmark models (benchmark + license). *Track A direction: MediaPipe Face Landmarker and a local person detector, pending licence check.*
 4. Grouping and burst thresholds (calibrated on labels; M0–M2).
-5. Selection preferences: people vs scenery vs chronological coverage.
-6. Print lab, trim tolerance, and safe-margin default (before M4).
-7. Distribution scope (family-only vs wider), which drives codec/model license requirements.
+5. ~~Selection preferences~~ **Answered:** family moments and good photos; no preference between people and scenery; print as many as the selection supports.
+6. ~~Print lab~~ **Answered:** Walgreens, preferably in-store kiosk or USB so no online library is created. Trim tolerance and safe margin to be confirmed with a test print.
+7. ~~Distribution scope~~ **Answered:** personal use.
 8. Model installation: bundled vs explicit offline package.
 9. Cache storage budget.
-10. Definition of "critical moment" and evaluation subset composition.
+10. ~~Definition of "critical moment"~~ **Answered:** forward-facing family moments, no blinking, sharp, decent background, no unrelated people unless cropped out. The evaluation subset composition is set when the Track B event is chosen.
 
 These do not block implementing safe inventory, the decoding contract, the data model, or the non-destructive storage architecture.
 

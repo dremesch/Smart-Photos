@@ -1,6 +1,6 @@
 # High-Level Design
 
-Architecture-level design for Family Photo Curator. It implements [Technical Specification v1.1](../spec/technical-specification-v1.1.md). Lower-level design (schemas, interfaces, algorithms, thresholds) is written per milestone. The list of deferred topics is in [04 §8](04-technical-direction.md#8-deferred-to-low-level-design).
+Architecture-level design for Family Photo Curator. It implements [Technical Specification v1.1](../spec/technical-specification.md). Lower-level design (schemas, interfaces, algorithms, thresholds) is written per milestone. The list of deferred topics is in [04 §8](04-technical-direction.md#8-deferred-to-low-level-design).
 
 | Document | Contents |
 |---|---|

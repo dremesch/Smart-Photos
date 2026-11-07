@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(**/*.jpg)",
+      "Read(**/*.JPG)",
+      "Read(**/*.jpeg)",
+      "Read(**/*.JPEG)",
+      "Read(**/*.heic)",
+      "Read(**/*.HEIC)",
+      "Read(**/*.heif)",
+      "Read(**/*.HEIF)",
+      "Read(**/*.dng)",
+      "Read(**/*.DNG)",
+      "Read(**/*.mov)",
+      "Read(**/*.MOV)",
+      "Read(**/*.mp4)",
+      "Read(**/*.MP4)",
+      "Read(~/OneDrive/**)",
+      "Read(~/OneDrive - */**)",
+      "Read(~/Pictures/**)",
+      "Read(~/AppData/Local/FamilyPhotoCurator/**)",
+      "Read(~/AppData/Local/FamilyPhotoCurator-POC/**)",
+      "Read(~/.local/share/fpc-poc/**)"
+    ]
+  }
+}

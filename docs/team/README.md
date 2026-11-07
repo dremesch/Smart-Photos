@@ -8,7 +8,7 @@ How the agent team is organized, who decides what, and how work moves from idea 
 
 ```mermaid
 flowchart TB
-    owner(["Product owner<br/>(human)"])
+    owner(["CTO / product owner<br/>(human)"])
     arch["Architect<br/>final technical authority"]
     pm["Product Manager<br/>scope and spec"]
     tl["Tech Lead<br/>plan, assign, gate PRs"]
@@ -19,16 +19,19 @@ flowchart TB
     sec["Security & Privacy<br/>Engineer"]
 
     owner --> arch
-    owner -. "product priorities" .-> pm
-    arch --> tl
-    arch -. "vision and constraints" .-> pm
+    arch --> pm & tl & ds
     pm -. "requirements" .-> tl
-    tl --> ds & sys & qe & ux & sec
+    ds -. "models, thresholds" .-> tl
+    tl --> sys & qe & ux & sec
 ```
+
+Reporting lines follow [CTO decision C8](decisions/2026-11-07-cto-decisions.md): the Architect reports to the CTO; the PM, Tech Lead and Data Scientist report to the Architect; the engineers (Systems, Quality, UX, Security) report to the Tech Lead. Security's veto escalates to the Architect, not the Tech Lead.
+
+**When to involve the CTO.** Work runs autonomously. The Architect brings the CTO in only for decisions above the Architect's rights (§2), owner-only actions (VM access, OneDrive, review and print sittings, signing checklists), and anything that changes privacy, cost or the delivery date.
 
 | Role | Skill | Owns | Final say on |
 |---|---|---|---|
-| **Product owner** (human) | — | Priorities, budget, merges to `main` | What the product is for; anything the Architect escalates |
+| **CTO / product owner** (human) | — | Priorities, budget, dates, merges to `main`, owner-only actions | What the product is for; anything the Architect escalates |
 | **Architect** | [`architect`](../../.claude/skills/architect/SKILL.md) | Spec technical content, design docs, ADRs, shared contracts, POC | Architecture, technology choices, contract changes, conflicts between roles |
 | **Product Manager** | [`product-manager`](../../.claude/skills/product-manager/SKILL.md) | Spec scope, requirements, acceptance criteria, change requests, user-facing docs | Whether a change is in scope and what "done" means for the user |
 | **Tech Lead** | [`tech-lead`](../../.claude/skills/tech-lead/SKILL.md) | Backlog, estimates, assignment, PR review and approval, release readiness | Task breakdown, sequencing, whether a PR merges |
@@ -62,7 +65,7 @@ The Security & Privacy Engineer was added by the Architect. Privacy and original
 | Privacy, integrity or licence risk | Anyone | Security & Privacy can block; Architect resolves | — |
 | Merge to `main` | Tech Lead marks ready | **Product owner** merges | — |
 
-**Escalation path:** assignee → Tech Lead → Architect → product owner. Disagreements are written down on the issue or PR, with options and a recommendation. The Architect decides within one round. Decisions that are hard to reverse become ADRs.
+**Escalation path:** assignee → Tech Lead → Architect → CTO. Disagreements are written down on the issue or PR, with options and a recommendation. The Architect decides within one round. Decisions that are hard to reverse become ADRs.
 
 ---
 
@@ -93,6 +96,7 @@ stateDiagram-v2
 | Size | `size:XS` (≤2h), `size:S` (≤1d), `size:M` (≤3d), `size:L` (≤1w), `size:XL` (must be split) |
 | Status | `status:triage`, `status:ready`, `status:in-progress`, `status:blocked`, `status:needs-decision` |
 | Gate | `approved:tech-lead`, `approved:architect`, `needs:architect`, `needs:security` |
+| Owner | `needs:owner` (issue needs the product owner's time or a decision from them) |
 
 ### PR gate (enforced)
 
@@ -107,6 +111,27 @@ New commits remove both approval labels automatically, so each approval covers t
 **Why labels and not GitHub reviews:** every agent pushes under the same GitHub identity, and GitHub does not let an author approve their own PR. A native required review cannot tell the Tech Lead from another agent. Labels plus a required check give a gate that is visible and auditable. The product owner keeps the final merge.
 
 ---
+
+### Cadence and review flow
+
+Adopted at [team meeting 1](meetings/2026-11-07-kickoff.md) (D14):
+
+- One-week sprints. The Tech Lead posts a written status every Friday.
+- At most two open PRs per role.
+- The Quality Engineer pre-reviews tests (time-boxed to one working day, written checklist) before the Tech Lead's review.
+- The Architect gates PRs authored by the Tech Lead. The Systems Engineer reviews test PRs authored by the Quality Engineer. Nobody approves their own work.
+- Owner time is scheduled work, labelled `needs:owner`.
+
+### Meetings
+
+Minutes and transcripts live in [`meetings/`](meetings/). Decisions are numbered per meeting (D1, D2, …) and folded into the relevant skills and docs.
+
+| Date | Meeting | Outcome |
+|---|---|---|
+| 2026-11-07 | [Kickoff and sprint 1 planning](meetings/2026-11-07-kickoff.md) | 14 decisions, 13-item sprint 1 backlog, owner asks |
+| 2026-11-07 | [Sync 2: Track A readiness](meetings/2026-11-07-sync-2.md) | Decisions S2-D1 to S2-D14, revised Track A schedule, CTO's Monday list |
+
+**Current backlog:** [`backlog/2026-11-backlog-v2.md`](backlog/2026-11-backlog-v2.md): Track A (holiday release, due 2026-11-27) and Track B. It supersedes the sprint plan in [`backlog/2026-11-backlog-draft.md`](backlog/2026-11-backlog-draft.md), whose epics still describe Track B after Dec 1. CTO decisions are in [`decisions/`](decisions/).
 
 ## 4. Rules for every role
 
