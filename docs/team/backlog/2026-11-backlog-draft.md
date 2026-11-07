@@ -4,7 +4,7 @@
 |---|---|
 | **Author** | Tech Lead |
 | **Date** | 2026-11-07 (Saturday) |
-| **Status** | Architect-reviewed (2026-11-07). PM questions Q6–Q10 open. **Nothing has been created on GitHub yet.** |
+| **Status** | Reviewed by the Architect and the PM (2026-11-07); PM changes applied. Owner questions pending (see PM review). **Nothing has been created on GitHub yet.** |
 | **Sources** | [Kickoff minutes](../meetings/2026-11-07-kickoff.md) (D1–D14, sprint 1 backlog), [team charter](../README.md), [POC handoff](../../../poc/HANDOFF.md), [spec v1.1 §20](../../spec/technical-specification-v1.1.md#20-milestones), [`.github/labels.json`](../../../.github/labels.json) |
 
 Local IDs (`S1-xx`, `S2-xx`, `EPIC-WP-x`) are placeholders. When the issues are created, each body gets its real `#number`, and references to other issues are rewritten to match.
@@ -41,6 +41,52 @@ Approved, with the corrections below already applied to this draft.
 
 ---
 
+## PM review (2026-11-07)
+
+**Verdict: approve with changes. All changes are applied in this draft.**
+
+| Area | Change applied |
+|---|---|
+| Spec gaps | Would-print label (§18.4) in S1-11 and S2-09; evaluation subset composition (§22.10) in S1-11; OneDrive folder organisation (§22.2) in S1-07; folder selection, cloud counts and excluded view (§5.1, §5.2, §2.2) in EPIC-WP-5 and EPIC-WP-6; pilot source hashing in EPIC-WP-6; keys per §11.2; groups shown as stacks with no "best" marker |
+| Acceptance criteria | Speed measure, end state, decision counting, batch matching and reserve batch C in S1-06, with identical wording in EPIC-WP-6; S1-11, S1-13, S2-09 to S2-11, S2-13, EPIC-WP-0 amended |
+| D1 | "Nothing shown" added to S1-08 and S1-10; S2-08 outputs kept away from labelling and deleted; week-5 run headless or synthetic; batches A, B and C excluded in EPIC-WP-13 and EPIC-WP-0 |
+| CI | S1-03: no self-hosted runner; `onedrive` tests are a manual, logged owner-PC run |
+
+**PM decisions on Q6–Q10**
+
+| Q | Decision |
+|---|---|
+| Q6 | Provisional M2–M4 dates set now. Holiday availability asked of the owner. |
+| Q7 | Only fully local days qualify for batches A, B and C. Fallback: the owner pins the days, as their own logged action. |
+| Q8 | No self-hosted runner on a PC that holds family photos. Manual `pytest -m onedrive`, logged in the run log. |
+| Q9 | Accepted. The dry run is team-only; go/no-go on Fri 2026-12-11; a no-go slips the pilot and the owner is told the same day. |
+| Q10 | Top owner ask. S1-09's family-only assumption stands until answered. |
+
+**Owner time, re-budgeted: about 11 hours, not 7.** The draft added work not in the meeting estimate: the S2-08 benchmark sitting, batch selection and the local copy, report reviews, the week-5 production hydration test and install, and pilot setup.
+
+| Week | Hours | Note |
+|---|---|---|
+| 1 | ~2.5 | Checklist, sitting (S1-07, S1-08, S1-10 dry run), batch selection |
+| 2 | ~3 | Baseline Mon/Tue (S1-13) before labelling; S2-08 unattended if Security agrees; S2-09, S2-10 |
+| 3 | ~1.75 | S2-11, M0 review |
+| 5 | ~1 | Production hydration test and install |
+| 6 | ~1.5 | Pilot setup, hashing, pilot |
+
+Rules: at most one owner session per day and 3 hours per week.
+
+**Questions for the owner (PM to ask)**
+
+1. Sign the "what may leave your PC" checklist. *By Tue 11-10.*
+2. In a sentence or two, what makes a photo a "can't-lose moment"? Which days should we use for testing? *By the week-1 sitting, at the latest Fri 11-13.*
+3. Will anyone outside the family ever use this app or its prints? *Fri 11-13.*
+4. Can you set three Japan days to "Always keep on this device" for our speed tests? *Fri 11-13.*
+5. Please confirm these session slots: week-1 sitting, baseline, three labelling sessions, benchmark, M0 review, week-5 setup and the pilot. *Tue 11-10.*
+6. When are you free from 12-19 to 01-10, and what is the latest pilot date that works for you? *Fri 11-20.*
+
+**Architect response:** all PM changes accepted, with two clarifications. First, "every photo in batch B ends with a final state" means selected or not selected; unreviewed counts as not selected, matching the S1-06 end-state rule. Second, S2-08 runs unattended only after Security confirms the harness scrubber test passed on the owner's PC.
+
+---
+
 ## 0. Conventions used in this draft
 
 **Sprint calendar.** Sprints are one week long (D14), Monday to Friday, and the Friday written status closes each one.
@@ -61,7 +107,7 @@ Approved, with the corrections below already applied to this draft.
 
 **Status labels.** An issue with no open dependency starts as `status:ready`. An issue that waits on another draft issue starts as `status:blocked` and moves to `status:ready` when the dependency merges. An issue that waits on an owner or Architect answer gets `status:needs-decision`.
 
-**D1 check.** No sprint 1 or sprint 2 issue shows the owner POC rankings, scores, groups-as-recommendations or crops. The issues that touch the owner (S1-07, S1-08, S1-10, S1-13, S2-08 to S2-11) say so explicitly in their acceptance criteria.
+**D1 check.** No sprint 1 or sprint 2 issue shows the owner POC rankings, scores, groups-as-recommendations or crops. The issues that touch the owner (S1-07, S1-08, S1-10, S1-13, S2-08 to S2-11) say so explicitly in their acceptance criteria. The week-5 real-stack run is headless on the owner's PC or on synthetic data only (PM review).
 
 ---
 
@@ -142,12 +188,12 @@ Every CI and developer install resolves to the exact, hash-verified versions in 
 #### Goal
 CI is the reference environment (D8). It runs on both platforms, enforces the test markers, and has scheduled and manual jobs for slow and OneDrive tests.
 #### Scope
-- In: a matrix (`windows-latest`, `ubuntu-latest`) on Python 3.12, pip caching keyed on the lock file, a nightly `-m slow` workflow, and a `workflow_dispatch` job for `-m onedrive` that runs on a self-hosted runner or by hand on the owner's PC. Coverage reporting, with no threshold yet.
-- Out: packaging smoke tests (WP-12); a self-hosted runner on the owner's PC (see Q8 for whether it is allowed).
+- In: a matrix (`windows-latest`, `ubuntu-latest`) on Python 3.12, pip caching keyed on the lock file, a nightly `-m slow` workflow, No CI job runs `-m onedrive`; it is run manually on the owner's PC and logged (Q8). Coverage reporting, with no threshold yet.
+- Out: packaging smoke tests (WP-12); any self-hosted runner. There is no runner on a PC holding family photos (PM decision on Q8).
 #### Acceptance criteria
 - [ ] The CI `test` job runs on both OSes and is green; the `poc` job runs at least on Windows.
 - [ ] `--strict-markers` is kept. A test that uses an unregistered marker fails CI (shown by a throwaway commit described in the PR).
-- [ ] The default job excludes `onedrive` and `slow`. The nightly job runs `slow`. The manual job runs `onedrive` and fails loudly, not as a skip, when no OneDrive root is configured.
+- [ ] The default job excludes `onedrive` and `slow`. The nightly job runs `slow`. The `onedrive` tests fail loudly, not as a skip, when run without a configured OneDrive root. A short how-to for the manual owner-PC run is documented (Q8).
 - [ ] A cache hit is visible in the logs of a second run.
 - [ ] The job names `CI / test` and `CI / poc` are unchanged, so branch protection still matches (charter §3).
 #### Notes
@@ -233,6 +279,12 @@ The review UI and `services` agree on one interface, so the grid can be built ag
 - [ ] The protocol states that batches A and B are excluded from all labelling sessions (D1), and S1-11's tool takes the exclusion list as input.
 - [ ] The protocol states that the M1 grid shows no rankings during the pilot.
 - [ ] It defines the result record (time, decisions, approved count, changes, effort) and states that only that record leaves the PC.
+- [ ] **Speed measure** (identical wording in EPIC-WP-6): seconds per photo = (clock stop − clock start) ÷ batch size. Clock start is when the first photo is shown after the warm-up; clock stop is when the owner says "done". Interruptions over 1 minute are logged and subtracted. M1 passes if batch B's seconds per photo is below batch A's × (1 − m), where the margin m is signed off in EPIC-WP-0 and defaults to 0. It is reported as a single observation, with no confidence interval.
+- [ ] **Equivalent end state:** selected = favourited in Windows Photos, or approved in the grid. Anything else, including unreviewed, counts as not selected. The grid does not require a reject on every photo.
+- [ ] **Decisions** = selection toggles or keypresses. **Later changes** = decisions reversed within the session.
+- [ ] **Matched batches:** photo counts within ±10%; burst share and HEIC share within ±10 percentage points.
+- [ ] A **reserve batch C** is selected under the same rule (used only if the pilot is aborted). Batch C is excluded from labelling too.
+- [ ] Only days that are already fully local qualify for batches A, B and C. Fallback: the owner pins the days with "Always keep on this device", as their own logged action (Q7).
 #### Notes
 - Links: D1, D2; spec §18.4 item 3, §19 "Workload reduction"; UX and PM round 1.
 - Open: whether making a local copy of batch A means the owner hydrates those files themselves (Q7).
@@ -248,7 +300,7 @@ The review UI and `services` agree on one interface, so the grid can be built ag
 #### Goal
 We learn whether the POC processes Japan 2024 on the real machine without hydration or crashes, and what the real HEIC files look like, without anything personal leaving the PC.
 #### Scope
-- In: recording the hardware profile (§22.1); a headless POC run over Japan 2024 under the S1-01 checklist; a format inventory (HEIC vs JPEG share, presence of Apple MakerNotes, `irot`/`imir` and `nclx` frequencies); a private HEIC sample corpus kept **on the owner's PC only**; an aggregate results report.
+- In: recording the hardware profile (§22.1); a headless POC run over Japan 2024 under the S1-01 checklist; a format inventory (HEIC vs JPEG share, presence of Apple MakerNotes, `irot`/`imir` and `nclx` frequencies); a private HEIC sample corpus kept **on the owner's PC only**; an aggregate description of the OneDrive folder organisation (§22.2: depth, folders per event, naming pattern type, with no names); an aggregate results report.
 - Out: showing the owner any output (D1); the hydration instrumentation (S1-08); benchmarks (S1-10, S2-08).
 #### Acceptance criteria
 - [ ] The run follows the S1-01 checklist: headless, data directory under `%LOCALAPPDATA%`, no `--out`, no `--auto-approve`. The completed checklist is recorded on the issue.
@@ -279,6 +331,7 @@ We have instrumented evidence, on the real OneDrive machine, that inventory read
 - [ ] The test folder contains at least one online-only placeholder; the test asserts this precondition and does not pass vacuously.
 - [ ] The run log is committed at `docs/evaluation/onedrive-run-log.md`, with date, OneDrive client version, Windows build, result, and placeholder count. It contains no paths (D2, D6).
 - [ ] The issue states that only instrumented runs count as §18.3 evidence (D13), and that this run covers the POC inventory, not production.
+- [ ] **Nothing is shown to the owner:** no UI, rankings, scores, groups or crops (D1).
 #### Notes
 - Links: D13; spec §18.3, §19 "OneDrive safety"; ADR-0004; POC `poc/fpc_poc/inventory.py`.
 - Systems and Security attend. Size: S. Biggest risk: the downloaded-bytes indicator isn't observable. In that case, fall back to attributes plus file-size-on-disk, and record the limitation.
@@ -322,6 +375,7 @@ There is a single harness that times decode and inference separately on the owne
 - [ ] Online-only files are skipped and counted, never opened (ADR-0004).
 - [ ] Model weights load only through a hash check against a manifest. The harness refuses to run a model with no manifest entry (ADR-0007).
 - [ ] The dry run on the owner's PC completes under the S1-01 checklist, and the owner reviews the JSON before anything is shared (Systems round 1).
+- [ ] **Nothing is shown to the owner** other than the scrubbed aggregate JSON: no per-photo output (D1).
 #### Notes
 - Links: D2, D6, D9; spec §20 M0 ("decode and inference timed separately"); Systems round 1.
 - Size: S. Biggest risk: measuring peak working set per spawned worker on Windows. Use `psutil` only if it is in the lock file (S1-02).
@@ -345,6 +399,11 @@ The owner can label critical moments, same/different pairs, and best-of-group on
 - [ ] The network guard is active, and a test shows that an outbound socket attempt fails.
 - [ ] The label file is written under the data directory. The tool has no export or upload function. The only thing it outputs to share is an aggregate summary (counts per label type).
 - [ ] The protocol is committed at `docs/evaluation/evaluation-protocol.md` before session 1, and the commit is dated before S2-09 starts.
+- [ ] The protocol defines the evaluation subset composition (§22.10): which days, how many photos, how pairs and groups are sampled.
+- [ ] The exclusion list holds file identities for batches A, B and C (kept on the owner's PC only), not just days.
+- [ ] The tool cannot read the POC database or any benchmark output (test).
+- [ ] Pairs and groups are sampled independently of POC or model grouping, including random pairs within a time window. Group members are shown in random order.
+- [ ] The tool collects the **would-print** label (§18.4 item 1), needed for Precision@N.
 - [ ] The critical-moment definition is taken verbatim from the owner's §22.10 answer. If there is no answer yet, the issue stays `status:needs-decision` for that criterion only.
 #### Notes
 - Links: D1, D11, D12; spec §18.4, §22.10; DS round 1.
@@ -381,7 +440,7 @@ Every test builds its photo fixtures from one seeded, licence-clean builder with
 ### S1-13 — Windows Photos baseline session on batch A
 
 **Labels:** `role:pm`, `wp:WP-0`, `type:test`, `size:XS`, `status:blocked`, `needs:owner`
-**Milestone:** M0 · **Sprint:** 1 (may slip into week 2 per D1) · **Depends on:** S1-01, S1-06 · **Blocks:** S2-09
+**Milestone:** M0 · **Sprint:** 1–2 (target **Mon 11-16 or Tue 11-17**, before S2-09; PM owner-time plan) · **Depends on:** S1-01, S1-06 · **Blocks:** S2-09
 
 #### Goal
 We record how long the owner takes to curate batch A in Windows Photos, before they see any AI output or label anything.
@@ -393,6 +452,7 @@ We record how long the owner takes to curate batch A in Windows Photos, before t
 - [ ] It happens **before** any labelling session and before the owner sees any POC output (D1, spec §18.4 item 1).
 - [ ] Only the result record leaves the PC (time, decisions, approved count, later changes, effort 1–5). It is committed at `docs/evaluation/m0/baseline-batch-a.md`.
 - [ ] The local copy of batch A sits outside every OneDrive root and source root, and no source file is modified. The owner confirms this.
+- [ ] The Windows Photos version is recorded. Any hydration caused by the owner's copy is logged in the OneDrive run log (Q7). The local copy is deleted after the session.
 #### Notes
 - Links: D1; spec §18.4 item 3, §19 "Workload reduction"; UX round 1.
 - Size: XS for our side, about 1 hour of owner time. Biggest risk: the owner is unavailable in week 1. It slips to week 2, which pushes S2-09.
@@ -487,15 +547,17 @@ Sprint 2 runs 2026-11-16 to 2026-11-20. Items marked *stretch* are expected to r
   - It runs against the POC now; production plugs in through the S1-15 runner.
 - **S2-06.** Synthetic HEICs with real `irot`/`imir` boxes and an EXIF orientation that disagrees, plus Display-P3 `nclx`. The Systems recipe is informed only by S1-07's aggregate feature counts. Criteria: the manifest gives the expected orientation and colour, and the licences are listed.
 - **S2-07.** Manifests in `models/manifests/` with source URL, licence, training-data note and SHA-256, for each model cleared in S1-09. Criterion: SCRFD is marked benchmark-only (D10). These are drafts and nothing ships.
-- **S2-08.** Run S1-10 with the S2-07 models on the owner's PC.
+- **S2-08.** Run S1-10 with the S2-07 models on the owner's PC. It may run unattended (about 15 minutes of owner time) once Security confirms the scrubber test passed on that PC. Detection outputs are kept out of the labelling tool's reach and deleted per S1-01 after scoring.
   - Criteria: timings for every candidate, and only aggregates leave the PC (D2, D9).
   - Detection outputs stay local. Accuracy scoring waits for labels (EPIC-WP-0), and **nothing is shown to the owner** (D1).
 - **S2-09 to S2-11.** One owner session each, about 60, 40 and 45 minutes, following S1-11's protocol.
-  - Criteria: batches A and B are excluded; no AI output is shown (D1); only label counts leave the PC.
+  - Criteria: batches A, B and C are excluded; no AI output is shown (D1); only label counts leave the PC.
+  - Each session is one sitting of 60 minutes or less on its own day; the owner may stop at any time. Item counts are pre-registered (about 600 pairs, about 150 groups), and the repeat-set agreement is reported.
+  - S2-09 also collects the would-print label.
   - The train/test split is fixed before session 1.
   - S2-11 may fall in week 3 (D1).
 - **S2-12.** Implement S1-05 as a fake, with configurable latency and failure injection per method. Criterion: the UX tests run headless on Windows CI (`pytest-qt` offscreen, if it is in the lock file).
-- **S2-13.** A virtualised grid with async thumbnails that never blocks the main thread. It is tested against S2-12 with 500 synthetic items, and shows no rankings. This is the basis for the week-4 dry run (Q9).
+- **S2-13.** A virtualised grid with async thumbnails that never blocks the main thread. It is tested against S2-12 with 500 synthetic items, and shows no rankings. With the fake set to 2 s thumbnail latency, keypresses are still processed (test). Ordering is by capture time only, with no group "best" marker. The keymap follows spec §11.2. This is the basis for the week-4 dry run (Q9).
 - **S2-14.** Implement the spec §14 schema with forward migrations. Criteria: an empty database migrates to head; migrations are idempotent; the schema has no path-only keys for derived data (invariant 5). Systems reviews.
 - **S2-15.** Make `persistence` the only writer, committing every 50 items or 500 ms. Criterion: the result and the ledger status are written in one transaction (Systems round 1).
 - **S2-16.** Implement the ADR-0008 decision log. Criteria: undo is an appended event; the projection can be rebuilt from the log (test); there is no SQL `UPDATE` or `DELETE` on decision rows (test).
@@ -512,17 +574,17 @@ Each epic becomes a tracking issue (`type:feature` unless noted, `status:triage`
 
 | ID | Title | Milestone | Scope summary | Depends on |
 |---|---|---|---|---|
-| EPIC-WP-0 | WP-0 close-out: shortlist, targets, M0 exit | M0 | Score the S2-08 detections against labels, on the test split only. Choose the model shortlist on evidence (ADR updates). The owner answers §22.5, §22.8 and §22.9, and the N for Precision@N. Set and sign off the acceptance target values. Write the M0 exit report (aggregates only). | S2-08, S2-11 |
+| EPIC-WP-0 | WP-0 close-out: shortlist, targets, M0 exit | M0 | Score the S2-08 detections against labels, on the test split only. Choose the model shortlist on evidence (ADR updates). The owner answers §22.5, §22.8 and §22.9, and the N for Precision@N. Set and sign off target values for every §19 area, including the margin m. N and all thresholds are fixed before scoring; scoring uses the test split only; batches A, B and C are excluded. The owner sees aggregate numbers only (no per-photo outputs, examples or crops). Write the M0 exit report (aggregates only). | S2-08, S2-11 |
 | EPIC-WP-1 | WP-1 persistence (remainder) | M1 | Repositories, `ProcessingItem` and `ExportItem` tables, content identity storage, backup and restore, crash-safety and projection tests ("restart loses nothing"). | S2-14 to S2-16 |
 | EPIC-WP-2 | WP-2 inventory (remainder) | M1 | Sync roots from the registry, two-pass inventory, path guard (nothing written under a source root), `onedrive`-marked production hydration test on the owner's PC (D13), Cloud Files API fallback if M0 shows attributes are unreliable. | S2-01, S2-17, S1-08 |
 | EPIC-WP-3 | WP-3 decoding and metadata (remainder) | M1 | Decoding contract (per-format orientation rule, `nclx` → ICC tag, 16-bit path), ExifTool adapter, time and time zones, devices and clock offsets, Live Photo pairing, content fingerprint (Q3). Error records follow invariant 10. | S2-01 to S2-06 |
 | EPIC-WP-4 | WP-4 jobs | M1 | Job manager, `ProcessingItem` ledger, cancel and resume, progress events matching S1-05's `JobProgress`. Kill-and-resume test at least as strong as the POC's. | EPIC-WP-1 |
-| EPIC-WP-5 | WP-5 services and CLI | M1 | Use-case facade implementing S1-05, composition root, thumbnail scheduler in `services` with priority and cancel (D4), headless CLI, end-to-end run on the synthetic event, S1-15 suites run against production. | EPIC-WP-2, EPIC-WP-3, EPIC-WP-4, S1-05 |
+| EPIC-WP-5 | WP-5 services and CLI | M1 | Use cases for event creation and folder selection (§5.1) and for local/online-only counts with the "Always keep on this device" prompt (§5.2); use-case facade implementing S1-05, composition root, thumbnail scheduler in `services` with priority and cancel (D4), headless CLI, end-to-end run on the synthetic event, S1-15 suites run against production. | EPIC-WP-2, EPIC-WP-3, EPIC-WP-4, S1-05 |
 | EPIC-WP-8-M1 | WP-8 M1 slice: exact + pHash/time grouping (`wp:WP-8`) | M1 | The minimal grouping M1 needs (spec §20 M1): exact duplicates first, pHash, time windows, bursts on the same device. Thresholds are uncalibrated for now (Q2). | EPIC-WP-3 |
-| EPIC-WP-6 | WP-6 review UI (M1) | M1 | Grid on the real stack, A/X/U and arrow keys, F for full screen, restart-safe undo, import-problems view, visible save state, no rankings shown. Week-4 dry run on synthetic data. **Week-6 pilot on batch B** using the S1-06 protocol. | S2-13, EPIC-WP-5, EPIC-WP-8-M1 |
+| EPIC-WP-6 | WP-6 review UI (M1) | M1 | Folder selection and event creation (§5.1); local/online-only counts and an excluded-files view (§5.2, §2.2); grid on the real stack in capture-time order, with groups as stacks and no "best" marker; keys per §11.2 (→/←, A, X, F, Ctrl+Z; U = reset to unreviewed); restart-safe undo; import-problems view; visible save state; no rankings. Week-4 dry run is team-only on synthetic data (go/no-go Fri 2026-12-11; a no-go slips the pilot). **Week-6 pilot on batch B**: passes on the S1-06 speed measure; every photo in B ends selected or not selected; B's source hashes are unchanged and a run-log entry exists; decisions survive a forced restart (dry run). The owner does not touch the grid before the pilot warm-up. An aborted pilot reruns on batch C, never B. | S2-13, EPIC-WP-5, EPIC-WP-8-M1 |
 | EPIC-WP-11 | WP-11 privacy and security | M1 → M4 | Network guard upgraded from tripwire to control (covering `socketpair`, `fromfd`, `_socket` and workers), logging of blocked attempts, firewall-rule option, log sanitisation, clean-up of interrupted-export `.tmp` files, blocked-network end-to-end test (spec §18.3), threat model. | S2-01, S1-15 |
 | EPIC-WP-12 | WP-12 build and release | M1 → M4 | PyInstaller one-dir, signing, packaging smoke test in CI, installer run on a clean Windows VM, licence notices for bundled codecs and models. | S1-02, S2-18, EPIC-WP-5 |
-| EPIC-WP-13 | WP-13 evaluation harness | M0 → M4 | Train/test split tooling, reproducible metric reports for spec §19 per milestone, 5,000-photo scale mode (marked `slow`), crop labelling for M3. | S1-11, S2-11 |
+| EPIC-WP-13 | WP-13 evaluation harness | M0 → M4 | Train/test split tooling that never assigns batches A, B or C to train or test before the M1 pilot, reproducible metric reports for spec §19 per milestone, 5,000-photo scale mode (marked `slow`), crop labelling for M3. | S1-11, S2-11 |
 | EPIC-WP-7 | WP-7 inference and features | M2 | Model registry and manifests (ADR-0007), ONNX adapter, the face, landmark and eye detectors and the pet detector chosen in M0, embeddings, quality features, `FeatureSet` contract, CPU budget below decode time. | EPIC-WP-0, S1-14, S2-01 |
 | EPIC-WP-8 | WP-8 grouping, ranking, recommendation | M2 | Embedding-based grouping, threshold calibration on the train split, ranking with reasons, album objective (§10.2), versioned SigLIP tag prompts (D11), comparison UI, selective advanced analysis. | EPIC-WP-7, EPIC-WP-13, EPIC-WP-8-M1 |
 | EPIC-WP-9 | WP-9 cropping | M3 | `CropDecision` + `validate()`, high-res or tiled detection, protected-region editor, 1-D search, risk classes, crop UI, evaluation on several hundred labelled crops with a CI. | EPIC-WP-3, EPIC-WP-7 |
