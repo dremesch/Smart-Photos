@@ -127,6 +127,8 @@ Minutes and transcripts live in [`meetings/`](meetings/). Decisions are numbered
 |---|---|---|
 | 2026-11-07 | [Kickoff and sprint 1 planning](meetings/2026-11-07-kickoff.md) | 14 decisions, 13-item sprint 1 backlog, owner asks |
 
+The backlog drafted from meeting 1 is in [`backlog/2026-11-backlog-draft.md`](backlog/2026-11-backlog-draft.md) (milestones M0–M4, sprint 1 and 2 issues, epics).
+
 ## 4. Rules for every role
 
 - [AGENTS.md](../../AGENTS.md) non-negotiables apply to everyone, including the Architect.
