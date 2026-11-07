@@ -12,3 +12,4 @@ Short records of significant, hard-to-reverse decisions. Use [`template.md`](tem
 | [0006](0006-single-image-decoding-contract.md) | Single image decoding contract | Accepted |
 | [0007](0007-license-gated-model-registry.md) | License-gated model registry | Accepted |
 | [0008](0008-sqlite-authoritative-store-append-only-decisions.md) | SQLite authoritative store and append-only decisions | Accepted |
+| [0009](0009-owner-controlled-azure-vm.md) | Run on an owner-controlled Azure VM; agents never read photo data | Accepted |

@@ -5,7 +5,7 @@
 | **Author** | Tech Lead |
 | **Date** | 2026-11-07 (Saturday) |
 | **Status** | Reviewed by the Architect and the PM (2026-11-07); PM changes applied. Owner questions pending (see PM review). **Nothing has been created on GitHub yet.** |
-| **Sources** | [Kickoff minutes](../meetings/2026-11-07-kickoff.md) (D1–D14, sprint 1 backlog), [team charter](../README.md), [POC handoff](../../../poc/HANDOFF.md), [spec v1.1 §20](../../spec/technical-specification-v1.1.md#20-milestones), [`.github/labels.json`](../../../.github/labels.json) |
+| **Sources** | [Kickoff minutes](../meetings/2026-11-07-kickoff.md) (D1–D14, sprint 1 backlog), [team charter](../README.md), [POC handoff](../../../poc/HANDOFF.md), [spec v1.1 §20](../../spec/technical-specification.md#20-milestones), [`.github/labels.json`](../../../.github/labels.json) |
 
 Local IDs (`S1-xx`, `S2-xx`, `EPIC-WP-x`) are placeholders. When the issues are created, each body gets its real `#number`, and references to other issues are rewritten to match.
 

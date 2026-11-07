@@ -16,7 +16,7 @@ How data enters, transforms, is stored, and leaves the system. It also covers wh
 | **D6 Outputs** | Print JPEGs, manifests | User-owned | Export folder | Source roots |
 | **D7 Diagnostics** | Counts, timings, internal IDs, error codes | Low | Logs | Paths, pixels, features, D4 |
 
-No face embeddings or identity data exist in any class ([spec v1.1 §16.3](../spec/technical-specification-v1.1.md#163-privacy-by-design)).
+No face embeddings or identity data exist in any class ([spec v1.1 §16.3](../spec/technical-specification.md#163-privacy-by-design)).
 
 ---
 

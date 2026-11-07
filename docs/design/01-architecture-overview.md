@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Scope** | High-level architecture. Lower-level design is deferred (see [04 §8](04-technical-direction.md#8-deferred-to-low-level-design)). |
-| **Source of requirements** | [Technical Specification v1.1](../spec/technical-specification-v1.1.md) |
+| **Source of requirements** | [Technical Specification v1.1](../spec/technical-specification.md) |
 | **Decisions** | [Architecture Decision Records](../adr/README.md) |
 
 ---

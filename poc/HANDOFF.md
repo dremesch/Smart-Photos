@@ -2,7 +2,7 @@
 
 Audience: the engineering agents building the production app in `src/family_photo_curator/`.
 
-**What is authoritative:** [Spec v1.1](../docs/spec/technical-specification-v1.1.md) for *what*, [High-level design](../docs/design/README.md) and [ADRs](../docs/adr/README.md) for *how*, and this POC for *evidence that it works*. Ground rules for every agent are in [AGENTS.md](../AGENTS.md).
+**What is authoritative:** [Spec](../docs/spec/technical-specification.md) for *what*, [High-level design](../docs/design/README.md) and [ADRs](../docs/adr/README.md) for *how*, and this POC for *evidence that it works*. Ground rules for every agent are in [AGENTS.md](../AGENTS.md).
 
 ---
 

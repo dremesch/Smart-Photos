@@ -8,7 +8,7 @@ How the agent team is organized, who decides what, and how work moves from idea 
 
 ```mermaid
 flowchart TB
-    owner(["Product owner<br/>(human)"])
+    owner(["CTO / product owner<br/>(human)"])
     arch["Architect<br/>final technical authority"]
     pm["Product Manager<br/>scope and spec"]
     tl["Tech Lead<br/>plan, assign, gate PRs"]
@@ -19,16 +19,19 @@ flowchart TB
     sec["Security & Privacy<br/>Engineer"]
 
     owner --> arch
-    owner -. "product priorities" .-> pm
-    arch --> tl
-    arch -. "vision and constraints" .-> pm
+    arch --> pm & tl & ds
     pm -. "requirements" .-> tl
-    tl --> ds & sys & qe & ux & sec
+    ds -. "models, thresholds" .-> tl
+    tl --> sys & qe & ux & sec
 ```
+
+Reporting lines follow [CTO decision C8](decisions/2026-11-07-cto-decisions.md): the Architect reports to the CTO; the PM, Tech Lead and Data Scientist report to the Architect; the engineers (Systems, Quality, UX, Security) report to the Tech Lead. Security's veto escalates to the Architect, not the Tech Lead.
+
+**When to involve the CTO.** Work runs autonomously. The Architect brings the CTO in only for decisions above the Architect's rights (§2), owner-only actions (VM access, OneDrive, review and print sittings, signing checklists), and anything that changes privacy, cost or the delivery date.
 
 | Role | Skill | Owns | Final say on |
 |---|---|---|---|
-| **Product owner** (human) | — | Priorities, budget, merges to `main` | What the product is for; anything the Architect escalates |
+| **CTO / product owner** (human) | — | Priorities, budget, dates, merges to `main`, owner-only actions | What the product is for; anything the Architect escalates |
 | **Architect** | [`architect`](../../.claude/skills/architect/SKILL.md) | Spec technical content, design docs, ADRs, shared contracts, POC | Architecture, technology choices, contract changes, conflicts between roles |
 | **Product Manager** | [`product-manager`](../../.claude/skills/product-manager/SKILL.md) | Spec scope, requirements, acceptance criteria, change requests, user-facing docs | Whether a change is in scope and what "done" means for the user |
 | **Tech Lead** | [`tech-lead`](../../.claude/skills/tech-lead/SKILL.md) | Backlog, estimates, assignment, PR review and approval, release readiness | Task breakdown, sequencing, whether a PR merges |
@@ -62,7 +65,7 @@ The Security & Privacy Engineer was added by the Architect. Privacy and original
 | Privacy, integrity or licence risk | Anyone | Security & Privacy can block; Architect resolves | — |
 | Merge to `main` | Tech Lead marks ready | **Product owner** merges | — |
 
-**Escalation path:** assignee → Tech Lead → Architect → product owner. Disagreements are written down on the issue or PR, with options and a recommendation. The Architect decides within one round. Decisions that are hard to reverse become ADRs.
+**Escalation path:** assignee → Tech Lead → Architect → CTO. Disagreements are written down on the issue or PR, with options and a recommendation. The Architect decides within one round. Decisions that are hard to reverse become ADRs.
 
 ---
 
