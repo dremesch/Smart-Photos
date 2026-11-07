@@ -1,0 +1,8 @@
+# POC only. Production pins are produced as a lock file in Milestone 0.
+numpy>=1.26
+pillow>=10.4
+pillow-heif>=0.18
+opencv-python-headless>=4.10,<5   # 5.x no longer bundles the Haar cascades the POC uses
+imagehash>=4.3
+PySide6-Essentials>=6.7
+scikit-image>=0.24                 # sample images for tools/make_sample_event.py and tests

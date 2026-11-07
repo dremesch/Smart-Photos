@@ -2,7 +2,7 @@
 
 A local-first Windows desktop application for selecting, smart-cropping, and exporting family photos for 4×6 printing, without sending images or derived data to any cloud service.
 
-**Status:** Specification and high-level design approved. Next gate: Milestone 0 (environment and feasibility). The source tree is a scaffold.
+**Status:** Specification, high-level design and proof of concept complete. Next gate: Milestone 0 (environment and feasibility). `src/` is the production scaffold; `poc/` is throwaway reference code.
 
 ## Documentation
 
@@ -12,6 +12,9 @@ A local-first Windows desktop application for selecting, smart-cropping, and exp
 | [High-level design](docs/design/README.md) | Architecture, data flow, sequences, technical direction |
 | [Architecture Decision Records](docs/adr/README.md) | Key decisions and their rationale |
 | [v1.0 review disposition](docs/reviews/v1.0-review-disposition.md) | Review findings and how they were resolved |
+| [Proof of concept](poc/README.md) | Working end-to-end prototype, findings, measurements |
+| [POC handoff](poc/HANDOFF.md) | Port map, contracts and work packages for the build team |
+| [AGENTS.md](AGENTS.md) | Rules for coding agents |
 
 ## Repository layout
 
@@ -28,6 +31,7 @@ src/family_photo_curator/
 models/manifests/  approved model manifests (weights are never committed)
 tests/           architecture, unit, integration, regression, privacy, performance
 docs/            spec, design, ADRs, reviews
+poc/             throwaway proof of concept (see poc/README.md)
 ```
 
 Layer dependencies and the no-network rule are enforced by `tests/architecture/`.
