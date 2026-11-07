@@ -375,3 +375,29 @@ def test_scanner_detects_every_kind_and_reports_counts_only():
     assert leakscan.hits(clean) == 0
     rep = leakscan.report({"stdout": c})
     assert TOKEN not in rep and "home" not in rep and "2024" not in rep
+
+
+def test_scanner_treats_jpeg_bytes_by_content_not_suffix(tmp_path):
+    """A leftover .tmp holding JPEG bytes must not raise false path hits from pixel data,
+    but a canary anywhere in it must still count."""
+    from PIL import Image
+
+    rnd = __import__("random").Random(7)
+    im = Image.frombytes("RGB", (400, 300), bytes(rnd.randrange(256) for _ in range(400 * 300 * 3)))
+    body = io.BytesIO()
+    im.save(body, "JPEG", quality=95)
+    raw = body.getvalue()
+    sos = raw.index(b"\xff\xda")
+    # Entropy-coded bytes that happen to read as " /ab/cd" (seen in real outputs on CI)
+    data = raw[: sos + 20] + b" /ab/cd 2024:01:02" + raw[sos + 20:]
+    noisy = leakscan.scan_bytes(data, [TOKEN])  # whole-file text scan
+    assert noisy["abs_path"] > 0 and noisy["timestamp"] > 0  # the false positive is real
+    for name in ("a.jpg", "b.tmp", "c"):
+        p = tmp_path / name
+        p.write_bytes(data)
+        c = leakscan.scan_file(p, [TOKEN])
+        assert c["abs_path"] == 0 and c["timestamp"] == 0, name
+    p = tmp_path / "d.tmp"
+    p.write_bytes(data + TOKEN.encode())
+    assert leakscan.scan_file(p, [TOKEN])["canary"] == 1
+    assert noisy["canary"] == 0

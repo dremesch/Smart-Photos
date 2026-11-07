@@ -28,7 +28,6 @@ TIMESTAMP = re.compile(
     r"(?<!\d)(?:19|20)\d{2}[:\-/._]\d{2}[:\-/._]\d{2}(?!\d)"  # dates as EXIF / ISO / file names write them
     r"|(?<!\d)\d{1,2}:\d{2}:\d{2}(?!\d)"  # wall-clock or capture times
 )
-JPEG_SUFFIXES = {".jpg", ".jpeg"}
 
 
 def _variants(token: str) -> list[bytes]:
@@ -67,10 +66,16 @@ def _jpeg_header(data: bytes) -> bytes:
     return data if i < 0 else data[:i]
 
 
+def is_jpeg(data: bytes) -> bool:
+    return data[:3] == b"\xff\xd8\xff"
+
+
 def scan_file(path: Path, tokens: Iterable[str], literals: Iterable[str] = ()) -> Counter:
+    """JPEG bytes are recognised by content (SOI marker), not by suffix, so a renamed or
+    leftover file (``.tmp`` from an interrupted export) is scanned like any other JPEG."""
     tokens, literals = list(tokens), list(literals)
     data = path.read_bytes()
-    if path.suffix.lower() in JPEG_SUFFIXES:
+    if is_jpeg(data):
         # Canary bytes anywhere; path/time patterns only in metadata segments, because
         # compressed pixel data can match short regexes by chance.
         c = scan_bytes(data, tokens, literals, text_patterns=False)

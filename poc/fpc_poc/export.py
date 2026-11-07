@@ -49,10 +49,17 @@ def task_export(path: str, crop: dict, out_path: str, expected_sha: str) -> dict
     if short_src < config.MIN_SHORT_SIDE_PX:
         warnings.append("LOW_RES")
     tmp = out.with_suffix(".tmp")
-    final.save(tmp, "JPEG", quality=95, subsampling=0, icc_profile=SRGB_ICC)  # no exif => GPS stripped
-    with open(tmp, "rb") as f:
-        os.fsync(f.fileno())
-    os.replace(tmp, out)
+    try:
+        # Write, flush and fsync through one writable handle: on Windows os.fsync calls
+        # _commit, which fails on a handle opened read-only.
+        with open(tmp, "wb") as f:
+            final.save(f, "JPEG", quality=95, subsampling=0, icc_profile=SRGB_ICC)  # no exif => GPS stripped
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, out)
+    finally:
+        if tmp.exists():  # a failed export removes its own partial file
+            tmp.unlink()
     return {"status": "done", "warnings": warnings, **verify(out, crop)}
 
 

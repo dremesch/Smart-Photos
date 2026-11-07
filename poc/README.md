@@ -58,7 +58,7 @@ python -m fpc_poc --data "$env:TEMP\fpc-data" review --event Sample
 ### Tests
 
 ```powershell
-pytest poc\tests -q      # 236 tests, including an end-to-end run on the synthetic event and the canary leak scan
+pytest poc\tests -q      # 241 tests, including an end-to-end run on the synthetic event and the canary leak scan
 ```
 
 ---

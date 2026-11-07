@@ -65,8 +65,9 @@ def scan(con: sqlite3.Connection, event: str, roots: list[Path]) -> Counter:
             changed = old["size"] != e.size or old["mtime"] != e.mtime
             keep = old["status"] in ("ok", "import_error", "crashed") and not changed
             con.execute(
-                "UPDATE photos SET size=?, mtime=?, cloud_state=?, status=?, companion=? WHERE id=?",
-                (e.size, e.mtime, e.cloud_state, old["status"] if keep else status, e.companion, old["id"]))
+                "UPDATE photos SET rel=?, size=?, mtime=?, cloud_state=?, status=?, companion=? WHERE id=?",
+                (e.rel, e.size, e.mtime, e.cloud_state, old["status"] if keep else status, e.companion,
+                 old["id"]))  # rel refreshed so DBs written before the POSIX fix converge
     for r in con.execute("SELECT id, path FROM photos WHERE event=?", (event,)).fetchall():
         if r["path"] not in seen:
             con.execute("UPDATE photos SET status='missing' WHERE id=?", (r["id"],))

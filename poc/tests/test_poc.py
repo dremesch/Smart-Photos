@@ -174,3 +174,80 @@ def test_e2e_export_refuses_source_folder(e2e):
 
     with pytest.raises(SystemExit):
         pipeline.export(con, "Test", event_dir / "Day1")
+
+
+# ---------------------------------------------------------------- Windows regressions (PR #39 CI)
+
+
+def _synthetic_jpeg(path: Path) -> dict:
+    from PIL import Image
+
+    Image.new("RGB", (900, 600), (120, 160, 200)).save(path, quality=90)  # synthetic, no metadata
+    return crop.bordered(900, 600).to_dict()
+
+
+def _require_writable_fd(fd: int) -> None:
+    """Windows os.fsync calls _commit, which fails on a read-only handle. Emulate that on
+    every platform: a zero-byte write fails with EBADF on a handle not opened for writing."""
+    import os
+
+    os.write(fd, b"")
+
+
+def test_export_fsyncs_through_a_writable_handle(tmp_path, monkeypatch):
+    import os
+
+    from fpc_poc import export
+
+    src = tmp_path / "src.jpg"
+    c = _synthetic_jpeg(src)
+    out = tmp_path / "out" / "TEST_0001.jpg"
+    out.parent.mkdir()
+    calls = []
+    real = os.fsync
+
+    def checked_fsync(fd):
+        _require_writable_fd(fd)
+        calls.append(fd)
+        real(fd)
+
+    monkeypatch.setattr(os, "fsync", checked_fsync)
+    res = export.task_export(str(src), c, str(out), "0" * 64)
+    assert res["status"] == "done" and res["verified"]
+    assert calls  # the data was fsynced before the rename
+    assert not list(out.parent.glob("*.tmp"))
+
+
+def test_failed_export_removes_its_own_tmp(tmp_path, monkeypatch):
+    import os
+
+    from fpc_poc import export
+
+    src = tmp_path / "src.jpg"
+    c = _synthetic_jpeg(src)
+    out = tmp_path / "out" / "TEST_0001.jpg"
+    out.parent.mkdir()
+
+    def failing_fsync(fd):
+        raise OSError(9, "Bad file descriptor")
+
+    monkeypatch.setattr(os, "fsync", failing_fsync)
+    with pytest.raises(OSError):
+        export.task_export(str(src), c, str(out), "0" * 64)
+    assert not out.exists()
+    assert not list(out.parent.glob("*.tmp"))
+
+
+def test_rel_is_posix_even_for_windows_paths():
+    from pathlib import PureWindowsPath
+
+    rel = inventory.rel_posix(PureWindowsPath(r"D:\OneDrive\Trip\Day1\IMG_1004.JPG"),
+                              PureWindowsPath(r"D:\OneDrive\Trip"))
+    assert rel == "Day1/IMG_1004.JPG"
+
+
+def test_e2e_rel_has_no_backslash(e2e):
+    con, *_ = e2e
+    rels = [r[0] for r in con.execute("SELECT rel FROM photos")]
+    assert rels and not any("\\" in r for r in rels)
+    assert any("/" in r for r in rels)
