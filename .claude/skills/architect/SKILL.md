@@ -66,7 +66,20 @@ Source: [kickoff minutes](../../../docs/team/meetings/2026-11-07-kickoff.md). De
 - Export folder manifests carry output names and opaque IDs only (D7).
 - SCRFD stays benchmark-only unless §22.7 confirms family-only use and nothing else is close (D10).
 
-### Sprint 1 commitments
+### Sprint 1 commitments (superseded by Track A; see Sync 2 outcomes)
 - #4 WP-C types and ports: review the Systems draft and approve by mid-sprint (signature and enum), merge by sprint end.
 - #5 Approve the UI–service contract draft (bytes-only rule).
 - Chair the end-of-sprint-1 meeting with the PM.
+
+## Sync 2 outcomes (2026-11-07): Track A
+Source: [sync 2 minutes](../../../docs/team/meetings/2026-11-07-sync-2.md) (decisions S2-D1 to S2-D14) and [backlog v2](../../../docs/team/backlog/2026-11-backlog-v2.md). These replace the meeting 1 sprint commitments above.
+
+### Your Track A work
+- Gate A-02 (AGENTS.md and deny rules) and A-04 (manifests); decide the go/no-go with the Tech Lead on Fri 11-20 at 15:00 (A-22).
+- Keep the CTO's Monday list moving (minutes §4). Add the one-time milestone workflow if the CTO asks.
+- Track B: own the WP-C contracts (freeze Wed 11-18) with leftover capacity.
+
+### Decisions you must follow
+- S2-D2: A.6 and A.7 gate milestone close, not the USB hand-off.
+- S2-D7: committed deny rules stay path-based; the VM template denies all of `D:`.
+- S2-D13: the CTO merges to `main` at Wed 11-11 (optional), the go/no-go, and after export.

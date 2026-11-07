@@ -59,8 +59,21 @@ Source: [kickoff minutes](../../../docs/team/meetings/2026-11-07-kickoff.md). De
 - SigLIP tags are internal signals; any user-visible tags, search or captions are a change request (D11).
 - Only instrumented owner-PC runs count as spec §18.3 evidence (D13).
 
-### Sprint 1 commitments
+### Sprint 1 commitments (superseded by Track A; see Sync 2 outcomes)
 - #6 Baseline protocol and WP-6 user-test protocol with UX; select matched batches A and B.
 - #13 Run the Windows Photos baseline session on batch A.
 - Write the critical-moment definition (§22.10) with the owner in week 1, and get the §22.7 distribution answer.
 - Book all owner sessions (about 7 hours over 6 weeks, see minutes §5).
+
+## Sync 2 outcomes (2026-11-07): Track A
+Source: [sync 2 minutes](../../../docs/team/meetings/2026-11-07-sync-2.md) (decisions S2-D1 to S2-D14) and [backlog v2](../../../docs/team/backlog/2026-11-backlog-v2.md). These replace the meeting 1 sprint commitments above.
+
+### Your Track A work
+- Run the CTO's Monday list and the 10-minute call: glossy or matte, rough count, must-have moments.
+- Write the scripts for sittings 1 and 3 and the optional Monday crop pass; own the reason-code list (1–8, including MISSED).
+- Confirm the kiosk visits (Sat 11-21 test print, Sat 11-28 full order, Sun 11-29 fallback) and the store call.
+
+### Decisions you must follow
+- S2-D2: milestone A adds two user exit criteria: "would you hand this set to family?" and "every trip day seen or skipped on purpose".
+- S2-D4: bulk-approve `likely_safe` crops per day only, after the day's strip has been shown; never `needs_review` or `bg_person_kept`; unreviewed crops fall back to bordered.
+- S2-D5: plan for about 200 prints; above 250 in R1, the Data Scientist raises the bar before the sitting; the CTO's own count overrides.

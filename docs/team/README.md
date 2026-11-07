@@ -129,6 +129,7 @@ Minutes and transcripts live in [`meetings/`](meetings/). Decisions are numbered
 | Date | Meeting | Outcome |
 |---|---|---|
 | 2026-11-07 | [Kickoff and sprint 1 planning](meetings/2026-11-07-kickoff.md) | 14 decisions, 13-item sprint 1 backlog, owner asks |
+| 2026-11-07 | [Sync 2: Track A readiness](meetings/2026-11-07-sync-2.md) | Decisions S2-D1 to S2-D14, revised Track A schedule, CTO's Monday list |
 
 **Current backlog:** [`backlog/2026-11-backlog-v2.md`](backlog/2026-11-backlog-v2.md): Track A (holiday release, due 2026-11-27) and Track B. It supersedes the sprint plan in [`backlog/2026-11-backlog-draft.md`](backlog/2026-11-backlog-draft.md), whose epics still describe Track B after Dec 1. CTO decisions are in [`decisions/`](decisions/).
 

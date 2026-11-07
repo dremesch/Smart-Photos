@@ -66,8 +66,21 @@ Source: [kickoff minutes](../../../docs/team/meetings/2026-11-07-kickoff.md). De
 - SCRFD is benchmark-only (amber); YuNet, SigLIP and YOLOX are provisionally green pending written verdicts (D10).
 - Synthetic adversarial fixtures are for regression and plumbing only; never report accuracy from synthetic data.
 
-### Sprint 1 commitments
+### Sprint 1 commitments (superseded by Track A; see Sync 2 outcomes)
 - #11 Minimal labelling tool and the pre-registered evaluation protocol.
 - Candidate model list with sources to Security by mid-week 1; benchmark specification to Systems.
 - Synthetic adversarial stand-ins (Haar near-misses, faces on posters and screens, cat poses, tiny faces, edge-cut faces) for the QE fixture builder, with licences recorded.
 - Schedule labelling sessions 1–3 for weeks 2–3 (after the baseline).
+
+## Sync 2 outcomes (2026-11-07): Track A
+Source: [sync 2 minutes](../../../docs/team/meetings/2026-11-07-sync-2.md) (decisions S2-D1 to S2-D14) and [backlog v2](../../../docs/team/backlog/2026-11-backlog-v2.md). These replace the meeting 1 sprint commitments above.
+
+### Your Track A work
+- A-05 (PR open by Thu 11-12), A-06 and A-07, using the S2-D10 priors as starting configuration.
+- Per-day suggested counts from R0 and R1 for the A-15 report; reason strings and K for the UX by Wed 11-18.
+- Run the Mon 11-16 early warning; tune from reason-code counts after sitting 1.
+
+### Decisions you must follow
+- S2-D10: thresholds and weights are versioned, uncalibrated priors. More than 30% of faces flagged as blinking in R1 means the threshold is wrong.
+- Never report accuracy from synthetic fixtures. The only real-photo signals are reason codes and aggregate histograms.
+- S2-D12: model hashes need a second download from the CTO's PC.

@@ -59,7 +59,19 @@ Source: [kickoff minutes](../../../docs/team/meetings/2026-11-07-kickoff.md). De
 - The labelling tool is not built on the review grid (D12); you may share thumbnail-loading code.
 - The Windows Photos baseline runs on a local copy the owner makes in Explorer, outside OneDrive, Desktop and Documents, deleted afterwards.
 
-### Sprint 1 commitments
+### Sprint 1 commitments (superseded by Track A; see Sync 2 outcomes)
 - #5 UI–service contract draft with the Tech Lead: `list_photos`, `request_thumbnail`/`cancel_thumbnail`, `record_decision`, `undo_last`, `review_summary`, `JobProgress` events, `cancel_job`.
 - #6 Baseline protocol with the PM.
 - Keyboard map and M1 grid wireframe for PM sign-off; `FakeReviewService` design (built in sprint 2).
+
+## Sync 2 outcomes (2026-11-07): Track A
+Source: [sync 2 minutes](../../../docs/team/meetings/2026-11-07-sync-2.md) (decisions S2-D1 to S2-D14) and [backlog v2](../../../docs/team/backlog/2026-11-backlog-v2.md). These replace the meeting 1 sprint commitments above.
+
+### Your Track A work
+- A-12 comparison view, plus the `T` test-print flag; A-13 crop queue with bulk approval (S2-D4); the Day view with "show more from this day"; the coverage strip with `S` to skip a day; reason keys 1–8.
+- A-23 `--manual` fallback merged by Fri 11-13. CI runs the synthetic event in both modes on every PR.
+- Book the CTO's 10-minute RDP blink check by Tue 11-10.
+
+### Decisions you must follow
+- S2-D3: every flag (test print, day skipped, reason code) is an append-only decision event.
+- Over RDP: 1024 px derivatives only, 100% zoom on demand, no animations. Target 1 second per group, logged on the VM.

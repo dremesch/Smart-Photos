@@ -83,7 +83,20 @@ Source: [kickoff minutes](../../../docs/team/meetings/2026-11-07-kickoff.md). De
 - WP-C is frozen at merge; later contract changes get their own PR and block dependent issues until reviewed (D3).
 - Every PR must state what was not run on the owner's PC or on real iPhone files; an issue is not done without that line.
 
-### Sprint 1 commitments
+### Sprint 1 commitments (superseded by Track A; see Sync 2 outcomes)
 - Create the 13 sprint 1 issues from the minutes §4 with labels, sizes and dependencies.
 - #5 UI–service contract draft with the UX Engineer.
 - First Friday status at the end of sprint 1; prepare sprint 2 from the minutes.
+
+## Sync 2 outcomes (2026-11-07): Track A
+Source: [sync 2 minutes](../../../docs/team/meetings/2026-11-07-sync-2.md) (decisions S2-D1 to S2-D14) and [backlog v2](../../../docs/team/backlog/2026-11-backlog-v2.md). These replace the meeting 1 sprint commitments above.
+
+### Your Track A work
+- Mon 11-09: create the issues from backlog v2 with the sync 2 changes; cut `release/holiday-2026` from `main` by 10:00.
+- Merge gate-green PRs into the release branch; cut the tags the VM pulls (`holiday-r0` Thu 11-12, then R1–R3).
+- Watch the warning line: no "VM created, sync started" by Tue 18:00 means switching to Server 2022 the same day.
+
+### Decisions you must follow
+- S2-D1: the revised schedule (test print Sat 11-21, optional Monday crop pass, sitting 3 Tue 11-24, export Wed 11-25, kiosk Sat 11-28). The test-print flag moves into A-12.
+- S2-D13: release-branch flow; the CTO merges to `main` only at the agreed points.
+- S2-D14: QE pauses B-06, B-08, B-10 and B-14 until Dec 1.

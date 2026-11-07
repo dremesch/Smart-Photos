@@ -11,6 +11,8 @@ Local IDs (`A-xx` for Track A, `B-xx` for Track B, and v1's `S1-xx`/`S2-xx` wher
 
 ---
 
+> **Sync 2 changes (2026-11-07):** apply [sync 2 decisions S2-D1 to S2-D14](../meetings/2026-11-07-sync-2.md) when creating issues. Main changes: test print moves to Sat 11-21 (6 files including a TEST CHART); sitting 2 becomes an optional Monday crop pass; the `T` flag moves into A-12; reason codes include MISSED; Day view and coverage strip; per-day bulk approval of `likely_safe` crops; milestone A gains two user exit criteria; A.6 and A.7 gate the close, not the hand-off.
+
 ## Architect review (2026-11-07)
 
 **Approved.** The changes below are part of the plan.
