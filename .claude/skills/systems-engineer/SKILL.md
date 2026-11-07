@@ -43,3 +43,24 @@ You make the system reliable, fast enough, recoverable and observable on one Win
 - Never weaken the decoder sandbox or the attribute-only inventory for speed.
 - Never add network-capable dependencies.
 - Follow [AGENTS.md](../../../AGENTS.md).
+
+## Meeting 1 outcomes (2026-11-07)
+Source: [kickoff minutes](../../../docs/team/meetings/2026-11-07-kickoff.md). Decision numbers (D1–D14) and backlog items (#1–#13) refer to the minutes.
+
+### Changes to this role
+- Diagnostics are local only; the word "telemetry" is not used for anything in this product.
+- You own the hashed lock file and the build (WP-12 starts in sprint 2).
+- You review test PRs authored by the Quality Engineer (D14).
+
+### Decisions you must follow
+- Decoder policy (WP-3 LLD): required deadline (default 30 s), kill within a grace period, respawn, two-strikes quarantine, 120 MP pixel cap, one worker reserved for interactive requests, thumbnail scheduling in `services` in front of a single pool; queued tasks are cancellable, in-flight decodes finish and are cached (D4).
+- Error records carry exception class and error code only; message text is never stored, logged or exported (D6).
+- Benchmark JSON: no file hashes (per-run opaque IDs), no machine name or username, automated scrubber test (D2).
+- Results commit in the same transaction as their ledger status; the single writer batches commits.
+
+### Sprint 1 commitments
+- #2 Hashed lock file; CI installs pinned versions only.
+- #4 Draft `ItemResult`, `CacheKey` and `DecoderPort` for Architect approval (signature and enum by mid-sprint).
+- #7 Owner-PC sitting: headless POC run and private HEIC sample corpus; recipe for real `irot`/`imir`/`nclx` fixtures for the QE.
+- #10 Offline benchmark harness with scrubber test (the run itself is sprint 2).
+- WP-3 low-level design covering deadline, kill and quarantine.

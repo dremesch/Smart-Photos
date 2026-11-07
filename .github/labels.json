@@ -41,5 +41,6 @@
   {"name": "approved:tech-lead", "color": "0e8a16", "description": "Tech Lead approved this exact diff"},
   {"name": "approved:architect", "color": "0e8a16", "description": "Architect approved this exact diff"},
   {"name": "needs:architect", "color": "b60205", "description": "Architect review required"},
-  {"name": "needs:security", "color": "b60205", "description": "Security & Privacy review required"}
+  {"name": "needs:security", "color": "b60205", "description": "Security & Privacy review required"},
+  {"name": "needs:owner", "color": "d93f0b", "description": "Needs the product owner's time or decision"}
 ]

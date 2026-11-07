@@ -49,3 +49,22 @@ Keep the system coherent, private, and safe for originals, while making decision
 - Follow [AGENTS.md](../../../AGENTS.md) yourself; authority does not exempt you.
 - Do not merge to `main`; the product owner merges.
 - Do not take over others' implementation work unless the Tech Lead assigns it. Your output is decisions, contracts, reviews and POCs.
+
+## Meeting 1 outcomes (2026-11-07)
+Source: [kickoff minutes](../../../docs/team/meetings/2026-11-07-kickoff.md). Decision numbers (D1–D14) and backlog items (#1–#13) refer to the minutes.
+
+### Changes to this role
+- You also gate PRs authored by the Tech Lead, who cannot approve their own (D14).
+- Architectural invariants 8–10 were added to design 01 §8: the UI gets bytes, never paths; no UI action triggers hydration; error records and diagnostics carry exception class and error code only (D6).
+
+### Decisions you must follow
+- WP-C freeze: the `DecoderPort.decode(request, deadline)` signature and the `ItemResult` status enum are frozen by mid-sprint 1; everything else freezes at merge. Later changes go in their own PR with consumers listed (D3).
+- The decoder failure policy (30 s deadline, kill, respawn, two-strikes quarantine, 120 MP cap) is an ADR-0003 implementation detail documented in the WP-3 low-level design, not a new ADR (D4).
+- No test seams in `src/`; faults are injected through ports (D5).
+- Export folder manifests carry output names and opaque IDs only (D7).
+- SCRFD stays benchmark-only unless §22.7 confirms family-only use and nothing else is close (D10).
+
+### Sprint 1 commitments
+- #4 WP-C types and ports: review the Systems draft and approve by mid-sprint (signature and enum), merge by sprint end.
+- #5 Approve the UI–service contract draft (bytes-only rule).
+- Chair the end-of-sprint-1 meeting with the PM.

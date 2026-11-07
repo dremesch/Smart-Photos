@@ -542,10 +542,11 @@ Strip GPS, device serials/identifiers, MakerNotes, and other personal metadata b
 ```
 <export root>/Japan_2024/
   print_ready/   JPN24_0001.jpg …
-  manifests/     selection.csv, crop_decisions.json
+  manifests/     selection.csv, crop_decisions.json   (output names + opaque IDs only)
   reports/       export_summary.json
 ```
 
+- Files in the export folder list output names and opaque IDs only. Source paths, source hashes and capture times stay in the app database, because the export folder is the one handed to print labs (team meeting 1, D7).
 - Destination may not be under a source root; warned if under a OneDrive sync root (§5.4).
 - Deterministic filenames; never overwrite silently.
 - Write to a temporary file, fsync, then atomic rename on the same volume.

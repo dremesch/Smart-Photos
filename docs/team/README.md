@@ -93,6 +93,7 @@ stateDiagram-v2
 | Size | `size:XS` (≤2h), `size:S` (≤1d), `size:M` (≤3d), `size:L` (≤1w), `size:XL` (must be split) |
 | Status | `status:triage`, `status:ready`, `status:in-progress`, `status:blocked`, `status:needs-decision` |
 | Gate | `approved:tech-lead`, `approved:architect`, `needs:architect`, `needs:security` |
+| Owner | `needs:owner` (issue needs the product owner's time or a decision from them) |
 
 ### PR gate (enforced)
 
@@ -107,6 +108,24 @@ New commits remove both approval labels automatically, so each approval covers t
 **Why labels and not GitHub reviews:** every agent pushes under the same GitHub identity, and GitHub does not let an author approve their own PR. A native required review cannot tell the Tech Lead from another agent. Labels plus a required check give a gate that is visible and auditable. The product owner keeps the final merge.
 
 ---
+
+### Cadence and review flow
+
+Adopted at [team meeting 1](meetings/2026-11-07-kickoff.md) (D14):
+
+- One-week sprints. The Tech Lead posts a written status every Friday.
+- At most two open PRs per role.
+- The Quality Engineer pre-reviews tests (time-boxed to one working day, written checklist) before the Tech Lead's review.
+- The Architect gates PRs authored by the Tech Lead. The Systems Engineer reviews test PRs authored by the Quality Engineer. Nobody approves their own work.
+- Owner time is scheduled work, labelled `needs:owner`.
+
+### Meetings
+
+Minutes and transcripts live in [`meetings/`](meetings/). Decisions are numbered per meeting (D1, D2, …) and folded into the relevant skills and docs.
+
+| Date | Meeting | Outcome |
+|---|---|---|
+| 2026-11-07 | [Kickoff and sprint 1 planning](meetings/2026-11-07-kickoff.md) | 14 decisions, 13-item sprint 1 backlog, owner asks |
 
 ## 4. Rules for every role
 

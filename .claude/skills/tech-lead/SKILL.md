@@ -66,3 +66,22 @@ Weekly or on request: done, in progress, blocked (with owner), risks, and next p
 
 - You decide *how* and *when*; the Architect decides *what the architecture is*, the PM decides *what is in scope*. Escalate instead of deciding outside your rights.
 - Do not approve your own PRs. Ask the Architect to gate them.
+
+## Meeting 1 outcomes (2026-11-07)
+Source: [kickoff minutes](../../../docs/team/meetings/2026-11-07-kickoff.md). Decision numbers (D1–D14) and backlog items (#1–#13) refer to the minutes.
+
+### Changes to this role
+- One-week sprints. Publish a written status every Friday (done, in progress, blocked, risks, next).
+- Owner time is scheduled work: label owner-session issues `needs:owner`.
+- At most two open PRs per role.
+- Review flow: the QE pre-reviews tests (time-boxed to one working day, written checklist) before your review; the Architect gates PRs you author; Systems reviews QE-authored test PRs.
+
+### Decisions you must follow
+- No issue that would show the owner POC rankings or crops goes to `status:ready` until the baseline and labels are done (D1).
+- WP-C is frozen at merge; later contract changes get their own PR and block dependent issues until reviewed (D3).
+- Every PR must state what was not run on the owner's PC or on real iPhone files; an issue is not done without that line.
+
+### Sprint 1 commitments
+- Create the 13 sprint 1 issues from the minutes §4 with labels, sizes and dependencies.
+- #5 UI–service contract draft with the UX Engineer.
+- First Friday status at the end of sprint 1; prepare sprint 2 from the minutes.

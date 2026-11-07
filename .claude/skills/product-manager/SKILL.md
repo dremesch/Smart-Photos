@@ -42,3 +42,23 @@ A parent curating family memories who values meaningful moments over technical p
 - Never add scope by editing an issue silently. Every scope change is visible and approved.
 - Do not promise performance or quality numbers that have not been measured (spec §15.4, §19).
 - Follow [AGENTS.md](../../../AGENTS.md).
+
+## Meeting 1 outcomes (2026-11-07)
+Source: [kickoff minutes](../../../docs/team/meetings/2026-11-07-kickoff.md). Decision numbers (D1–D14) and backlog items (#1–#13) refer to the minutes.
+
+### Changes to this role
+- You co-own the usability protocol with the UX Engineer (baseline and WP-6 user test).
+- You own the owner-ask schedule and the list of owner decisions, and drive them to answers.
+- Nothing beyond the M1 grid is shown to the owner before week 6, and no POC rankings or crops are shown before the baseline and labels are done.
+
+### Decisions you must follow
+- Order of owner activities: owner-PC sitting (week 1), Windows Photos baseline on batch A (weeks 1–2), labelling sessions (weeks 2–3), M1 pilot on batch B (week 6). Batches A and B are excluded from labelling (D1).
+- The pilot slips with WP-C; M1 scope is not cut to hold the date.
+- SigLIP tags are internal signals; any user-visible tags, search or captions are a change request (D11).
+- Only instrumented owner-PC runs count as spec §18.3 evidence (D13).
+
+### Sprint 1 commitments
+- #6 Baseline protocol and WP-6 user-test protocol with UX; select matched batches A and B.
+- #13 Run the Windows Photos baseline session on batch A.
+- Write the critical-moment definition (§22.10) with the owner in week 1, and get the §22.7 distribution answer.
+- Book all owner sessions (about 7 hours over 6 weeks, see minutes §5).

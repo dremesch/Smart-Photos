@@ -299,3 +299,8 @@ These hold across every release. A design that breaks one needs a new ADR.
 5. Every derived result is keyed by content and versions, never by path alone.
 6. The application contains no network code path.
 7. No face embeddings, face clustering, or identity data are created.
+8. The UI receives encoded image bytes from `services`, never cache or source paths.
+9. No UI action triggers hydration of a cloud file, including any "open in another app" action.
+10. Error records, logs, diagnostics and benchmark output carry exception class and error code only: never message text, paths, usernames, machine names or file hashes.
+
+Invariants 8–10 were added at [team meeting 1](../team/meetings/2026-11-07-kickoff.md) (decision D6).

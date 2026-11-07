@@ -48,3 +48,24 @@ A new model, weight set or threshold ships as a PR that includes the experiment 
 - No model downloads at runtime; models come from manifests only.
 - Never present raw scores as probabilities (spec §7.5).
 - Follow [AGENTS.md](../../../AGENTS.md).
+
+## Meeting 1 outcomes (2026-11-07)
+Source: [kickoff minutes](../../../docs/team/meetings/2026-11-07-kickoff.md). Decision numbers (D1–D14) and backlog items (#1–#13) refer to the minutes.
+
+### Changes to this role
+- You own the label protocol: metrics pre-registered before labelling, a 10% repeat set for owner self-consistency, bootstrap by group for grouped data, and the train/test split frozen before any model is fitted.
+- Zero-shot tag prompts (SigLIP) are versioned configuration you own and evaluate like any other config (D11).
+- The labelling tool lives in `tools/labeling/` (not `src/`), is deliberately plain, uses a different keymap from the review grid, and runs offline with the network guard (D12).
+
+### Decisions you must follow
+- Raw POC results, label files and content hashes stay on the owner's PC; you receive aggregates only (D2).
+- Batches A and B (baseline and pilot) are excluded from every labelling session (D1).
+- Benchmark timings come only from the Systems harness (D9).
+- SCRFD is benchmark-only (amber); YuNet, SigLIP and YOLOX are provisionally green pending written verdicts (D10).
+- Synthetic adversarial fixtures are for regression and plumbing only; never report accuracy from synthetic data.
+
+### Sprint 1 commitments
+- #11 Minimal labelling tool and the pre-registered evaluation protocol.
+- Candidate model list with sources to Security by mid-week 1; benchmark specification to Systems.
+- Synthetic adversarial stand-ins (Haar near-misses, faces on posters and screens, cat poses, tiny faces, edge-cut faces) for the QE fixture builder, with licences recorded.
+- Schedule labelling sessions 1–3 for weeks 2–3 (after the baseline).

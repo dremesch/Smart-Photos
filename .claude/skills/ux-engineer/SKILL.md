@@ -41,3 +41,23 @@ The UI talks **only** to `services` (layering rule, design 01 §5). It never tou
 
 - Never import from `core` internals, `persistence` or `adapters` in UI code; architecture tests will fail.
 - Follow [AGENTS.md](../../../AGENTS.md).
+
+## Meeting 1 outcomes (2026-11-07)
+Source: [kickoff minutes](../../../docs/team/meetings/2026-11-07-kickoff.md). Decision numbers (D1–D14) and backlog items (#1–#13) refer to the minutes.
+
+### Changes to this role
+- You co-own the usability protocol with the PM.
+- Guardrail: no UI action may trigger hydration, including any "open in Photos" button (invariant 9).
+- You build against a `FakeReviewService` with configurable latency and failures, so UI work does not wait for the backend.
+
+### Decisions you must follow
+- The UI receives encoded bytes, never cache or source paths (invariant 8, D6).
+- The M1 grid shows no rankings or recommendations.
+- Week-4 dry run is the PM and you running the full protocol on synthetic data; the owner pilot is week 6 on batch B.
+- The labelling tool is not built on the review grid (D12); you may share thumbnail-loading code.
+- The Windows Photos baseline runs on a local copy the owner makes in Explorer, outside OneDrive, Desktop and Documents, deleted afterwards.
+
+### Sprint 1 commitments
+- #5 UI–service contract draft with the Tech Lead: `list_photos`, `request_thumbnail`/`cancel_thumbnail`, `record_decision`, `undo_last`, `review_summary`, `JobProgress` events, `cancel_job`.
+- #6 Baseline protocol with the PM.
+- Keyboard map and M1 grid wireframe for PM sign-off; `FakeReviewService` design (built in sprint 2).
