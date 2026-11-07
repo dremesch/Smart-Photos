@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "family-photo-curator"
+dynamic = ["version"]
+description = "Local-first selection, smart cropping and 4x6 export of family photos."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = { text = "Proprietary" }
+# Engine dependencies. Version ranges only; exact pins and hashes are produced
+# as a lock file during Milestone 0 once candidates are benchmarked.
+dependencies = [
+  "numpy>=1.26",
+  "pillow>=10.4",
+  "pillow-heif>=0.18",
+  "opencv-python-headless>=4.10",
+  "imagehash>=4.3",
+  "onnxruntime>=1.19",
+]
+
+[project.optional-dependencies]
+ui = ["PySide6-Essentials>=6.7"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+family-photo-curator = "family_photo_curator.__main__:main"
+
+[tool.hatch.version]
+path = "src/family_photo_curator/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/family_photo_curator"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra --strict-markers"
+markers = [
+  "windows_only: requires Windows APIs (cloud files, firewall)",
+  "onedrive: requires a real OneDrive-synced folder",
+  "slow: long-running benchmark or full-pipeline test",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "PTH"]
+ignore = ["S101"]  # asserts are fine in tests

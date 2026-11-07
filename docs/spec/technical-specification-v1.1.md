@@ -158,6 +158,8 @@ All licenses must be re-verified at integration time; this table is a starting p
 
 ### 4.4 Logical modules
 
+> Refined in [High-Level Design 01 §4](../design/01-architecture-overview.md#4-logical-view-layers-and-components): `services` (use cases) and `adapters` (OS and native integration) are separated from `core`. The repository follows the refined layout.
+
 ```
 family-photo-curator/
   app/
