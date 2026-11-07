@@ -15,6 +15,7 @@ A local-first Windows desktop application for selecting, smart-cropping, and exp
 | [Proof of concept](poc/README.md) | Working end-to-end prototype, findings, measurements |
 | [POC handoff](poc/HANDOFF.md) | Port map, contracts and work packages for the build team |
 | [AGENTS.md](AGENTS.md) | Rules for coding agents |
+| [Team charter](docs/team/README.md) | Agent roles, decision rights, workflow and PR gate (skills in `.claude/skills/`) |
 
 ## Repository layout
 
