@@ -1,4 +1,8 @@
-"""Print export worker: decode via the contract, crop, sRGB, strip metadata, atomic write, verify."""
+"""Print export worker: decode via the contract, crop, sRGB, strip metadata, atomic write, verify.
+
+Results carry codes, never message text (issue #13): warnings LOW_RES; problems RATIO,
+SIZE, NO_ICC, PROFILE_NOT_SRGB, METADATA_PRESENT; error code E_SOURCE_CHANGED.
+"""
 
 from __future__ import annotations
 
@@ -26,7 +30,7 @@ def task_export(path: str, crop: dict, out_path: str, expected_sha: str) -> dict
     img, info = load_oriented(path)
     w, h = img.size
     if [w, h] != list(crop["oriented_size"]):
-        return {"status": "error", "error": "source changed since crop (oriented size differs)"}
+        return {"status": "error", "error_class": "SourceChanged", "error_code": "E_SOURCE_CHANGED"}
     rgb = to_srgb(img, info["icc"])
     long_, short = config.EXPORT_LONG, config.EXPORT_SHORT
     tw, th = (long_, short) if w >= h else (short, long_)
@@ -43,7 +47,7 @@ def task_export(path: str, crop: dict, out_path: str, expected_sha: str) -> dict
         short_src = min(cw, ch)
         final = rgb.crop((x, y, x + cw, y + ch)).resize((tw, th), Image.Resampling.LANCZOS)
     if short_src < config.MIN_SHORT_SIDE_PX:
-        warnings.append(f"low resolution: {short_src}px short side")
+        warnings.append("LOW_RES")
     tmp = out.with_suffix(".tmp")
     final.save(tmp, "JPEG", quality=95, subsampling=0, icc_profile=SRGB_ICC)  # no exif => GPS stripped
     with open(tmp, "rb") as f:
@@ -61,15 +65,15 @@ def verify(out: Path, crop: dict) -> dict:
     _, r = target_ratio(*crop["oriented_size"])
     problems = []
     if abs(w / h - r) > 0.002:
-        problems.append(f"ratio {w}x{h}")
+        problems.append("RATIO")
     if sorted((w, h)) != [config.EXPORT_SHORT, config.EXPORT_LONG]:
-        problems.append(f"size {w}x{h}")
+        problems.append("SIZE")
     if not icc:
-        problems.append("no ICC profile")
+        problems.append("NO_ICC")
     else:
         desc = ImageCms.getProfileDescription(ImageCms.ImageCmsProfile(io.BytesIO(icc)))
         if "srgb" not in desc.lower():
-            problems.append(f"profile {desc!r}")
+            problems.append("PROFILE_NOT_SRGB")
     if exif.get_ifd(0x8825) or len(exif):
-        problems.append("metadata present")
+        problems.append("METADATA_PRESENT")
     return {"verified": not problems, "problems": problems, "size": [w, h]}

@@ -1,4 +1,9 @@
-"""Stage orchestration. Main process is the single DB writer; heavy work runs in workers."""
+"""Stage orchestration. Main process is the single DB writer; heavy work runs in workers.
+
+Everything returned or printed from here is aggregate-only (issue #13, D6): counts and
+timings, never paths, file names, capture times, hashes or exception messages. Source
+details stay in the DB; the export folder carries output names and opaque IDs only (D7).
+"""
 
 from __future__ import annotations
 
@@ -21,13 +26,20 @@ from .export import task_export
 
 
 def log(msg: str) -> None:
-    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+    """Progress line. Callers pass counts only; no wall-clock time (it reads as a timestamp)."""
+    print(f"[fpc] {msg}", flush=True)
+
+
+def error_field(m: dict) -> str:
+    """The value stored in photos.error: status, code and exception class. Never the message."""
+    return f"{m.get('status')}:{m.get('error_code', 'E_UNKNOWN')}:{m.get('error_class', 'Unknown')}"
 
 
 # ---------------------------------------------------------------- 1. inventory pass 1
 
 
 def scan(con: sqlite3.Connection, event: str, roots: list[Path]) -> Counter:
+    t = time.time()
     con.execute("INSERT OR REPLACE INTO events(name, roots) VALUES(?,?)",
                 (event, json.dumps([str(r.resolve()) for r in roots])))
     entries = inventory.scan(roots)
@@ -60,6 +72,7 @@ def scan(con: sqlite3.Connection, event: str, roots: list[Path]) -> Counter:
             con.execute("UPDATE photos SET status='missing' WHERE id=?", (r["id"],))
             c["missing"] += 1
     con.commit()
+    db.record_timing(con, event, "scan", time.time() - t)
     return c
 
 
@@ -96,8 +109,10 @@ def ingest(con: sqlite3.Connection, paths: Paths, event: str, workers: int | Non
             con.execute("UPDATE photos SET status='unavailable', cloud_state=? WHERE id=?",
                         (m.get("cloud_state"), pid))
         else:
+            if st == "error":
+                m = {**m, "error_code": "E_DECODE"}  # the ingest task is the decoder
             con.execute("UPDATE photos SET status='import_error', error=? WHERE id=?",
-                        (f"{st}: {m.get('error')}", pid))
+                        (error_field(m), pid))
         con.commit()  # per-item commit = resumable
         done = sum(v for k, v in c.items() if k != "cache_hit")
         if done % 25 == 0 or done == n:
@@ -106,6 +121,7 @@ def ingest(con: sqlite3.Connection, paths: Paths, event: str, workers: int | Non
     t = time.time()
     run_isolated(task_ingest, jobs, workers, on_result)
     c["seconds"] = round(time.time() - t, 2)
+    db.record_timing(con, event, "ingest", time.time() - t)
     return c
 
 
@@ -130,6 +146,7 @@ def analyze(con: sqlite3.Connection, paths: Paths, event: str, workers: int | No
     t = time.time()
     run_isolated(features.compute, jobs, workers, on_result)
     c["seconds"] = round(time.time() - t, 2)
+    db.record_timing(con, event, "analyze", time.time() - t)
     return c
 
 
@@ -137,6 +154,7 @@ def analyze(con: sqlite3.Connection, paths: Paths, event: str, workers: int | No
 
 
 def group_and_rank(con: sqlite3.Connection, event: str, target: int | None = None) -> dict:
+    t0 = time.time()
     rows = con.execute(
         "SELECT p.*, f.data FROM photos p JOIN features f ON f.photo_id=p.id "
         "WHERE p.event=? AND p.status='ok'", (event,)).fetchall()
@@ -185,6 +203,7 @@ def group_and_rank(con: sqlite3.Connection, event: str, target: int | None = Non
         con.execute("INSERT INTO scores VALUES(?,?,?,?,?)",
                     (pid, s, json.dumps(reasons), int(pid in order), order.get(pid)))
     con.commit()
+    db.record_timing(con, event, "rank", time.time() - t0)
     kinds = Counter(g.kind for g in groups)
     return {"photos": len(rows), "groups": dict(kinds), "grouped_alternatives": len(non_top),
             "recommended": len(rec), "target": target}
@@ -194,6 +213,7 @@ def group_and_rank(con: sqlite3.Connection, event: str, target: int | None = Non
 
 
 def propose_crops(con: sqlite3.Connection, event: str) -> Counter:
+    t = time.time()
     approved = [i for i, s in db.review_state(con, event).items() if s == "approve"]
     c: Counter = Counter()
     for pid in approved:
@@ -208,6 +228,7 @@ def propose_crops(con: sqlite3.Connection, event: str) -> Counter:
                     (pid, json.dumps(cp.to_dict()), cp.risk))
         c[cp.risk] += 1
     con.commit()
+    db.record_timing(con, event, "crops", time.time() - t)
     return c
 
 
@@ -227,13 +248,19 @@ def _under(p: Path, root: Path) -> bool:
         return False
 
 
+CROP_MANIFEST_KEYS = ("target", "mode", "oriented_size", "px", "norm", "risk")
+ITEM_KEYS = ("status", "verified", "problems", "warnings", "size")
+
+
 def export(con: sqlite3.Connection, event: str, out_root: Path, workers: int | None = None,
            allow_onedrive: bool = False) -> dict:
+    """Write print-ready files plus manifests. Returns counts only, not the folder path."""
+    t = time.time()
     out_root = out_root.resolve()
     roots = [Path(r) for r in json.loads(con.execute("SELECT roots FROM events WHERE name=?",
                                                      (event,)).fetchone()[0])]
     if any(_under(out_root, r) for r in roots):
-        raise SystemExit(f"refused: export folder {out_root} is inside a source folder")
+        raise SystemExit("refused: the export folder is inside a source folder")
     if not allow_onedrive and any(_under(out_root, r) for r in _onedrive_roots()):
         raise SystemExit("export folder is inside OneDrive; pass --allow-onedrive to confirm")
 
@@ -247,40 +274,130 @@ def export(con: sqlite3.Connection, event: str, out_root: Path, workers: int | N
     (base / "print_ready").mkdir(parents=True, exist_ok=True)
     (base / "manifests").mkdir(exist_ok=True)
     (base / "reports").mkdir(exist_ok=True)
+    # An interrupted export can leave partial .tmp files; they are ours, never a source.
+    tmp_removed = 0
+    for tmp in (base / "print_ready").glob("*.tmp"):
+        tmp.unlink()
+        tmp_removed += 1
     jobs, names = [], {}
     for k, r in enumerate(rows, 1):
         out = base / "print_ready" / f"{prefix}_{k:04d}.jpg"
         names[r["id"]] = out
         jobs.append((r["id"], (r["path"], json.loads(r["data"]), str(out), r["sha256"])))
     results = run_isolated(task_export, jobs, workers)
-    for pid, res in results.items():
+    for pid, res in results.items():  # full detail, including the source link, stays in the DB
         con.execute("INSERT INTO exports(photo_id, out_path, status, detail) VALUES(?,?,?,?)",
                     (pid, str(names[pid]), res.get("status"), json.dumps(res)))
     con.commit()
+    # D7: the export folder goes to the print lab. Output names and opaque IDs only:
+    # no source path, file name, SHA-256 or capture time.
     with open(base / "manifests" / "selection.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["output", "photo_id", "source_sha256", "capture_ts", "status", "verified"])
+        w.writerow(["output", "photo_id", "status", "verified"])
         for r in rows:
             res = results[r["id"]]
-            w.writerow([names[r["id"]].name, r["id"], r["sha256"], r["capture_ts"],
-                        res.get("status"), res.get("verified")])
-    (base / "manifests" / "crop_decisions.json").write_text(
-        json.dumps({r["id"]: json.loads(r["data"]) for r in rows}, indent=1))
+            w.writerow([names[r["id"]].name, r["id"], res.get("status"), res.get("verified")])
+    crops = {}
+    for r in rows:
+        c = json.loads(r["data"])
+        crops[str(r["id"])] = {"output": names[r["id"]].name, **{k: c[k] for k in CROP_MANIFEST_KEYS}}
+    (base / "manifests" / "crop_decisions.json").write_text(json.dumps(crops, indent=1))
     summary = Counter(r.get("status") for r in results.values())
     summary["verified"] = sum(bool(r.get("verified")) for r in results.values())
     summary["warnings"] = sum(len(r.get("warnings", [])) for r in results.values())
+    items = {str(pid): {"output": names[pid].name, **{k: res[k] for k in ITEM_KEYS if k in res}}
+             for pid, res in results.items()}
     (base / "reports" / "export_summary.json").write_text(json.dumps(
-        {"summary": summary, "items": {str(k): v for k, v in results.items()}}, indent=1))
-    return {"folder": str(base), **summary}
+        {"summary": summary, "items": items}, indent=1))
+    db.record_timing(con, event, "export", time.time() - t)
+    return {**summary, "tmp_removed": tmp_removed}
 
 
 # ---------------------------------------------------------------- integrity
 
 
-def integrity(con: sqlite3.Connection, event: str) -> dict:
+def integrity(con: sqlite3.Connection, event: str, report_dir: Path | None = None) -> dict:
+    """Re-hash originals. Returns counts; the list of changed items goes to report_dir
+    (inside the data directory, which agents are denied), never to the console."""
+    t = time.time()
     rows = con.execute("SELECT path, sha256 FROM photos WHERE event=? AND status='ok'", (event,)).fetchall()
     changed = [r["path"] for r in rows if not os.path.exists(r["path"]) or sha256_file(r["path"]) != r["sha256"]]
-    return {"checked": len(rows), "changed": changed}
+    if report_dir is not None:
+        report_dir.mkdir(parents=True, exist_ok=True)
+        (report_dir / "integrity_changed.json").write_text(json.dumps(changed, indent=1))
+    db.record_timing(con, event, "integrity", time.time() - t)
+    return {"checked": len(rows), "changed": len(changed)}
+
+
+# ---------------------------------------------------------------- summary (aggregate-only)
+
+PHOTO_STATUSES = ("discovered", "excluded", "unavailable", "ok", "import_error", "missing")
+ERROR_CODES = ("E_DECODE", "E_CRASH", "E_SOURCE_CHANGED", "E_WORKER")
+GROUP_KINDS = ("exact", "near", "burst")
+CROP_RISKS = ("likely_safe", "needs_review", "crop_conflict")
+EXPORT_STATUSES = ("done", "skipped_existing", "error", "unavailable", "crashed")
+STAGES = ("scan", "ingest", "analyze", "rank", "crops", "export", "integrity")
+# ranking.score reasons are free text; map them onto a closed set of codes
+REASON_CODES = (("face(s)", "FACES"), ("soft focus", "SOFT"), ("exposure", "EXPOSURE"),
+                ("low resolution", "LOW_RES"), ("incomplete metadata", "INCOMPLETE_METADATA"),
+                ("pet", "PET"))
+
+
+def _closed(counts: Counter, vocab: tuple[str, ...], other: str = "other") -> dict:
+    """Keep known keys; fold anything else into `other`, so keys come from a fixed allowlist."""
+    out = {k: int(counts.get(k, 0)) for k in vocab}
+    extra = sum(v for k, v in counts.items() if k not in vocab)
+    if extra:
+        out[other] = int(extra)
+    return out
+
+
+def _reason_code(text: str) -> str:
+    for needle, code in REASON_CODES:
+        if needle in text:
+            return code
+    return "OTHER"
+
+
+def summary(con: sqlite3.Connection, event: str) -> dict:
+    """One aggregate JSON for agents: counts and timings only, every key from an allowlist."""
+    photos = Counter(r[0] for r in con.execute("SELECT status FROM photos WHERE event=?", (event,)))
+    errors = Counter((r[0] or "").split(":")[1] if (r[0] or "").count(":") >= 2 else "other"
+                     for r in con.execute("SELECT error FROM photos WHERE event=? AND error IS NOT NULL",
+                                          (event,)))
+    groups = Counter(r[0] for r in con.execute("SELECT kind FROM groups WHERE event=?", (event,)))
+    ambiguous = con.execute("SELECT COUNT(*) FROM groups WHERE event=? AND ambiguous=1",
+                            (event,)).fetchone()[0]
+    score_rows = con.execute("SELECT s.reasons, s.recommended FROM scores s JOIN photos p "
+                             "ON p.id=s.photo_id WHERE p.event=?", (event,)).fetchall()
+    reasons = Counter(_reason_code(t) for r in score_rows for t in json.loads(r[0] or "[]"))
+    state = Counter(db.review_state(con, event).values())
+    log_rows = Counter(r[0] for r in con.execute(
+        "SELECT d.action FROM decisions d JOIN photos p ON p.id=d.photo_id WHERE p.event=?", (event,)))
+    crops = con.execute("SELECT c.risk, c.manual FROM crops c JOIN photos p ON p.id=c.photo_id "
+                        "WHERE p.event=?", (event,)).fetchall()
+    risk = Counter(r[0] for r in crops)
+    exp_rows = con.execute(
+        "SELECT e.status, e.detail FROM exports e JOIN photos p ON p.id=e.photo_id WHERE p.event=? "
+        "AND e.rowid IN (SELECT MAX(rowid) FROM exports GROUP BY photo_id)", (event,)).fetchall()
+    exports = Counter(r[0] for r in exp_rows)
+    details = [json.loads(r[1] or "{}") for r in exp_rows]
+    timings = {f"{r[0]}_s": float(r[1]) for r in con.execute(
+        "SELECT stage, seconds FROM timings WHERE event=?", (event,)) if r[0] in STAGES}
+    return {
+        "photos": {"total": int(sum(photos.values())), **_closed(photos, PHOTO_STATUSES)},
+        "errors": _closed(errors, ERROR_CODES),
+        "groups": {**_closed(groups, GROUP_KINDS), "ambiguous": int(ambiguous)},
+        "ranking": {"scored": len(score_rows), "recommended": sum(int(r[1]) for r in score_rows)},
+        "reason_codes": _closed(reasons, tuple(c for _, c in REASON_CODES), other="OTHER"),
+        "decisions": {"approve": int(state.get("approve", 0)), "reject": int(state.get("reject", 0)),
+                      "log_rows": int(sum(log_rows.values())), "undo": int(log_rows.get("undo", 0))},
+        "crop_risk": {**_closed(risk, CROP_RISKS), "manual": sum(int(r[1] or 0) for r in crops)},
+        "exports": {**_closed(exports, EXPORT_STATUSES),
+                    "verified": sum(bool(d.get("verified")) for d in details),
+                    "warnings": sum(len(d.get("warnings", [])) for d in details)},
+        "timings": timings,
+    }
 
 
 def emb_cos(a: list[float], b: list[float]) -> float:

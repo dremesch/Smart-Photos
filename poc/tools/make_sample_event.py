@@ -3,7 +3,12 @@
 Uses scikit-image sample images (public domain / permissive). Never use real
 family photos as committed fixtures.
 
-    python poc/tools/make_sample_event.py OUT_DIR
+    python poc/tools/make_sample_event.py OUT_DIR [--canary TOKEN]
+
+With --canary, an extra day folder is planted whose folder name, file names,
+EXIF (Make, Model, ImageDescription, Artist, Software), MakerNote, XMP packet and
+ICC profile description all carry TOKEN. The leak tests (and the pre-USB gate)
+assert that TOKEN never reaches any agent-visible or shareable output.
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 import pillow_heif
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageCms, ImageDraw, ImageFilter
 from skimage import data
 
 W, H = 2016, 1512  # 3 MP 4:3 keeps generation fast
@@ -86,7 +91,74 @@ def save_jpg(im: Image.Image, p: Path, ts, **kw) -> None:
     im.save(p, quality=92, exif=exif_bytes(ts, **kw))
 
 
-def main(out: Path) -> None:
+def canary_icc(token: str) -> bytes:
+    """An sRGB ICC profile whose description is patched to carry the canary token.
+
+    The colorants are untouched, so colour management still works; only the 13-character
+    v4 'mluc' description ("sRGB built-in", UTF-16BE) is replaced.
+    """
+    icc = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+    old = "sRGB built-in".encode("utf-16-be")
+    new = (token + " icc-desc")[:13].ljust(13).encode("utf-16-be")
+    assert icc.count(old) == 1 and len(new) == len(old)
+    return icc.replace(old, new)
+
+
+def canary_exif(token: str, ts: datetime) -> bytes:
+    ex = Image.Exif()
+    ex[271], ex[272] = token, f"{token} model"
+    ex[274] = 1
+    ex[270] = f"{token} description"  # ImageDescription
+    ex[305] = f"{token} software"  # Software
+    ex[315] = f"{token} artist"  # Artist
+    ex[306] = ts.strftime("%Y:%m:%d %H:%M:%S")
+    sub = ex.get_ifd(0x8769)
+    sub[36867] = ts.strftime("%Y:%m:%d %H:%M:%S")
+    sub[36881] = "+09:00"
+    sub[0x927C] = f"Apple iOS\x00{token} makernote".encode()  # MakerNote (UNDEFINED)
+    ex.get_ifd(0x8825).update(GPS)
+    return ex.tobytes()
+
+
+def canary_xmp(token: str) -> bytes:
+    return (
+        '<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>'
+        '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF '
+        'xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+        '<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" '
+        'xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/">'
+        f'<dc:description>{token} xmp</dc:description>'
+        f'<photoshop:City>{token} city</photoshop:City>'
+        '<photoshop:DateCreated>2024-04-05T11:00:00+09:00</photoshop:DateCreated>'
+        '</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>'
+    ).encode()
+
+
+def plant_canaries(out: Path, token: str) -> list[Path]:
+    """Plant `token` in a folder name, file names, EXIF, MakerNote, XMP and ICC description."""
+    day = out / f"Day4_{token}"
+    day.mkdir(parents=True, exist_ok=True)
+    t4 = datetime(2024, 4, 5, 11, 0, 0)
+    icc, xmp = canary_icc(token), canary_xmp(token)
+    written = []
+    scenes = [portrait_scene(1, 1100, 350, fsize=700), scenery("camera"), scenery("moon")]
+    for k, im in enumerate(scenes):
+        p = day / f"IMG_{token}_{4001 + k}.JPG"
+        im.save(p, quality=92, exif=canary_exif(token, t4 + timedelta(hours=k)),
+                icc_profile=icc, xmp=xmp)
+        written.append(p)
+    p = day / f"IMG_{token}_4010.HEIC"
+    pillow_heif.from_pillow(scenery("coins")).save(
+        p, quality=90, exif=canary_exif(token, t4 + timedelta(hours=5)), xmp=xmp, icc_profile=icc)
+    written.append(p)
+    good = written[0].read_bytes()
+    p = day / f"IMG_{token}_4099_corrupt.JPG"  # decoder error whose message would carry the path
+    p.write_bytes(good[: len(good) // 3])
+    written.append(p)
+    return written
+
+
+def main(out: Path, canary: str | None = None) -> None:
     if out.exists():
         shutil.rmtree(out)
     d1, d2, d3 = (out / f"Day{i}" for i in (1, 2, 3))
@@ -144,9 +216,17 @@ def main(out: Path) -> None:
     (d3 / "IMG_3998_CRASHME.JPG").write_bytes(good)  # crashes the decoder when the marker env var is set
     Image.new("RGB", (1170, 2532), (240, 240, 240)).save(d3 / "Screenshot 2024-04-04.png")
     (d3 / "notes.txt").write_text("not a photo")
+    if canary:
+        plant_canaries(out, canary)
     n = sum(1 for _ in out.rglob("*") if _.is_file())
     print(f"wrote {n} files to {out}")
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]))
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("out", type=Path)
+    ap.add_argument("--canary", help="plant this token in names and metadata")
+    a = ap.parse_args()
+    main(a.out, a.canary)

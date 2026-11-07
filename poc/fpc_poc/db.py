@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS decisions(id INTEGER PRIMARY KEY, photo_id INT, actio
   source TEXT, ts TEXT DEFAULT CURRENT_TIMESTAMP, undoes INT);
 CREATE TABLE IF NOT EXISTS crops(photo_id INT PRIMARY KEY, data TEXT, risk TEXT, manual INT DEFAULT 0);
 CREATE TABLE IF NOT EXISTS exports(photo_id INT, out_path TEXT, status TEXT, detail TEXT, ts TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS timings(event TEXT, stage TEXT, seconds REAL, PRIMARY KEY(event, stage));
 """
 
 
@@ -71,6 +72,12 @@ def undo_last(con: sqlite3.Connection, event: str) -> int | None:
             con.commit()
             return r["photo_id"]
     return None
+
+
+def record_timing(con: sqlite3.Connection, event: str, stage: str, seconds: float) -> None:
+    con.execute("INSERT OR REPLACE INTO timings(event, stage, seconds) VALUES(?,?,?)",
+                (event, stage, round(seconds, 3)))
+    con.commit()
 
 
 def features(con: sqlite3.Connection, photo_id: int) -> dict:
