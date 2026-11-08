@@ -474,13 +474,17 @@ def test_workers_ignore_sigint():
 
 def test_main_process_warning_prints_category_and_code_only(tmp_path):
     script = (
-        "import sys, warnings\n"
+        "import os, sys, warnings\n"
         "from fpc_poc import __main__ as m, pipeline\n"
-        f"pipeline.summary = lambda *a: warnings.warn('bad EXIF in {tmp_path}/{TOKEN}/x.jpg') or {{}}\n"
+        "msg = os.environ['FPC_TEST_WARN_MSG']\n"
+        "pipeline.summary = lambda *a: warnings.warn(msg) or {}\n"
         "sys.exit(m.cli(sys.argv[1:]))\n"
     )
     env = dict(os.environ)
     env["PYTHONPATH"] = str(POC) + os.pathsep + env.get("PYTHONPATH", "")
+    # Passed by environment, not interpolated into the script: a Windows path such as
+    # C:\Users\... would be an invalid escape inside a Python string literal.
+    env["FPC_TEST_WARN_MSG"] = f"bad EXIF in {tmp_path / TOKEN / 'x.jpg'}"
     cp = subprocess.run([sys.executable, "-c", script, "--data", str(tmp_path / "data"), "summary",
                          "--event", "X"], cwd=tmp_path, env=env, capture_output=True, text=True,
                         timeout=TIMEOUT, check=False)
