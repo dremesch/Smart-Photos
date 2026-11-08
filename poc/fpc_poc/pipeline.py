@@ -260,8 +260,11 @@ def export(con: sqlite3.Connection, event: str, out_root: Path, workers: int | N
     out_root = out_root.resolve()
     roots = [Path(r) for r in json.loads(con.execute("SELECT roots FROM events WHERE name=?",
                                                      (event,)).fetchone()[0])]
-    if any(_under(out_root, r) for r in roots):
-        raise SystemExit("refused: the export folder is inside a source folder")
+    prefix = (re.sub(r"[^A-Za-z0-9]", "", event).upper() or "EVENT")[:8]
+    base = out_root / re.sub(r"[^\w\-]", "_", event)
+    # Any overlap, either direction: the export must never write or delete inside a source.
+    if any(_under(out_root, r) or _under(r, out_root) or _under(r, base) for r in roots):
+        raise SystemExit("refused: the export folder overlaps a source folder")
     if not allow_onedrive and any(_under(out_root, r) for r in _onedrive_roots()):
         raise SystemExit("export folder is inside OneDrive; pass --allow-onedrive to confirm")
 
@@ -270,16 +273,17 @@ def export(con: sqlite3.Connection, event: str, out_root: Path, workers: int | N
         f"SELECT p.id, p.path, p.sha256, p.capture_ts, c.data FROM photos p JOIN crops c ON c.photo_id=p.id "
         f"WHERE p.id IN ({','.join('?' * len(approved))}) ORDER BY p.capture_ts, p.path", approved
     ).fetchall() if approved else []
-    prefix = (re.sub(r"[^A-Za-z0-9]", "", event).upper() or "EVENT")[:8]
-    base = out_root / re.sub(r"[^\w\-]", "_", event)
     (base / "print_ready").mkdir(parents=True, exist_ok=True)
     (base / "manifests").mkdir(exist_ok=True)
     (base / "reports").mkdir(exist_ok=True)
-    # An interrupted export can leave partial .tmp files; they are ours, never a source.
+    # An interrupted export can leave partial .tmp files. Remove only names this export
+    # writes ({prefix}_NNNN.tmp in print_ready), nothing else.
     tmp_removed = 0
+    own_tmp = re.compile(rf"{re.escape(prefix)}_\d{{4}}\.tmp")
     for tmp in (base / "print_ready").glob("*.tmp"):
-        tmp.unlink()
-        tmp_removed += 1
+        if own_tmp.fullmatch(tmp.name) and tmp.is_file():
+            tmp.unlink()
+            tmp_removed += 1
     jobs, names = [], {}
     for k, r in enumerate(rows, 1):
         out = base / "print_ready" / f"{prefix}_{k:04d}.jpg"

@@ -7,8 +7,9 @@ family photos as committed fixtures.
 
 With --canary, an extra day folder is planted whose folder name, file names,
 EXIF (Make, Model, ImageDescription, Artist, Software), MakerNote, XMP packet and
-ICC profile description all carry TOKEN. The leak tests (and the pre-USB gate)
-assert that TOKEN never reaches any agent-visible or shareable output.
+ICC profile description all carry TOKEN. One JPEG has no ICC profile and carries
+TOKEN in a COM comment. The leak tests (and the pre-USB gate) assert that TOKEN
+never reaches any agent-visible or shareable output.
 """
 
 from __future__ import annotations
@@ -147,6 +148,12 @@ def plant_canaries(out: Path, token: str) -> list[Path]:
         im.save(p, quality=92, exif=canary_exif(token, t4 + timedelta(hours=k)),
                 icc_profile=icc, xmp=xmp)
         written.append(p)
+    # No ICC profile, plus a JPEG COM segment: without an ICC the decoder keeps the source
+    # image (and its info dict), so this is the path a comment would ride into an export.
+    p = day / f"IMG_{token}_4004.JPG"
+    scenery("brick").save(p, quality=92, exif=canary_exif(token, t4 + timedelta(hours=4)),
+                          comment=f"{token} jpeg-comment".encode())
+    written.append(p)
     p = day / f"IMG_{token}_4010.HEIC"
     pillow_heif.from_pillow(scenery("coins")).save(
         p, quality=90, exif=canary_exif(token, t4 + timedelta(hours=5)), xmp=xmp, icc_profile=icc)

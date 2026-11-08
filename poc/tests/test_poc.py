@@ -251,3 +251,100 @@ def test_e2e_rel_has_no_backslash(e2e):
     rels = [r[0] for r in con.execute("SELECT rel FROM photos")]
     assert rels and not any("\\" in r for r in rels)
     assert any("/" in r for r in rels)
+
+
+# ---------------------------------------------------------------- export metadata and cleanup (Security review)
+
+TOKEN = "CANARY_7Q3"
+
+
+def _no_icc_jpeg_with_metadata(path: Path) -> None:
+    from PIL import Image
+
+    ex = Image.Exif()
+    ex[270] = f"{TOKEN} description"
+    xmp = f"<x:xmpmeta xmlns:x='adobe:ns:meta/'>{TOKEN}</x:xmpmeta>".encode()
+    Image.new("RGB", (900, 600), (90, 140, 60)).save(  # synthetic, no ICC profile
+        path, quality=90, comment=f"{TOKEN} comment".encode(), exif=ex.tobytes(), xmp=xmp)
+
+
+def test_crop_mode_export_drops_source_comment_and_app_segments(tmp_path):
+    from fpc_poc import export
+
+    src = tmp_path / "src.jpg"
+    _no_icc_jpeg_with_metadata(src)
+    c = crop.propose(900, 600, [], [], (0.5, 0.5)).to_dict()
+    assert c["mode"] == "borderless"
+    out = tmp_path / "TEST_0001.jpg"
+    res = export.task_export(str(src), c, str(out), "0" * 64)
+    data = out.read_bytes()
+    leaked = TOKEN.encode() in data
+    assert not leaked, "source metadata copied into the print-ready file"
+    assert res["status"] == "done" and res["verified"]
+    assert set(export.jpeg_markers(data)) <= export.ALLOWED_MARKERS
+
+
+def _insert_after_soi(data: bytes, marker: int, payload: bytes) -> bytes:
+    seg = bytes([0xFF, marker]) + (len(payload) + 2).to_bytes(2, "big") + payload
+    return data[:2] + seg + data[2:]
+
+
+@pytest.mark.parametrize(("marker", "payload"), [
+    (0xFE, b"a comment"),  # COM
+    (0xE1, b"Exif\x00\x00MM\x00*"),  # APP1 EXIF
+    (0xE1, b"http://ns.adobe.com/xap/1.0/\x00<x/>"),  # APP1 XMP
+    (0xED, b"Photoshop 3.0\x008BIM"),  # APP13 IPTC
+    (0xEC, b"Ducky"),  # any other APPn
+])
+def test_verify_rejects_non_allowlisted_segments(tmp_path, marker, payload):
+    from fpc_poc import export
+
+    src = tmp_path / "src.jpg"
+    c = _synthetic_jpeg(src)
+    out = tmp_path / "TEST_0001.jpg"
+    assert export.task_export(str(src), c, str(out), "0" * 64)["verified"]
+    out.write_bytes(_insert_after_soi(out.read_bytes(), marker, payload))
+    v = export.verify(out, c)
+    assert not v["verified"] and "METADATA_PRESENT" in v["problems"]
+
+
+def _export_db(tmp_path: Path, roots: list[Path], name: str = "t.db"):
+    con = db.connect(tmp_path / name)
+    con.execute("INSERT INTO events(name, roots) VALUES(?,?)",
+                ("Test", json.dumps([str(r.resolve()) for r in roots])))
+    con.commit()
+    return con
+
+
+def test_export_refuses_a_source_root_inside_the_export_folder(tmp_path):
+    from fpc_poc import pipeline
+
+    out = tmp_path / "prints"
+    src = out / "Test" / "print_ready"  # a source folder that the export base contains
+    src.mkdir(parents=True)
+    keep = src / "TEST_0001.tmp"  # would match the sweep if it ran
+    keep.write_bytes(b"belongs to the user")
+    con = _export_db(tmp_path, [src])
+    with pytest.raises(SystemExit):
+        pipeline.export(con, "Test", out)
+    assert keep.read_bytes() == b"belongs to the user"
+    con2 = _export_db(tmp_path, [tmp_path / "photos"], name="t2.db")
+    with pytest.raises(SystemExit):  # and the other direction: export inside a source root
+        pipeline.export(con2, "Test", tmp_path / "photos" / "prints")
+
+
+def test_tmp_sweep_only_removes_its_own_names(tmp_path):
+    from fpc_poc import pipeline
+
+    src = tmp_path / "event"
+    src.mkdir()
+    out = tmp_path / "prints"
+    pr = out / "Test" / "print_ready"
+    pr.mkdir(parents=True)
+    ours, other1, other2 = pr / "TEST_0003.tmp", pr / "notes.tmp", pr / "TEST_12.tmp"
+    for f in (ours, other1, other2):
+        f.write_bytes(b"x")
+    con = _export_db(tmp_path, [src])
+    res = pipeline.export(con, "Test", out)
+    assert res["tmp_removed"] == 1
+    assert not ours.exists() and other1.exists() and other2.exists()

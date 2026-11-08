@@ -22,7 +22,7 @@ import traceback
 from collections import Counter
 from pathlib import Path
 
-from . import db, guard, pipeline
+from . import db, guard, pipeline, quiet
 from .config import Paths, default_data_dir
 
 EXIT_UNCAUGHT = 3
@@ -130,6 +130,7 @@ def _crash_log(exc: BaseException, code: str) -> None:
 
 def cli(argv: list[str] | None = None) -> int:
     """Entry point with the top-level handler: class and code only, on stderr."""
+    quiet.install_main()  # library warnings print category and code, never a module path
     try:
         return main(argv)
     except SystemExit:

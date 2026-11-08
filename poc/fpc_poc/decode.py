@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 from PIL import Image, ImageCms, ImageOps
 
-from . import config, guard
+from . import config, quiet
 from .inventory import current_state, is_openable
 
 _HEIF_REGISTERED = False
@@ -190,7 +190,7 @@ def run_isolated(
 
     pending = list(jobs)
     try:
-        with ProcessPoolExecutor(max_workers=workers, mp_context=ctx, initializer=guard.block) as ex:
+        with ProcessPoolExecutor(max_workers=workers, mp_context=ctx, initializer=quiet.worker_init) as ex:
             futs = {ex.submit(fn, *args): key for key, args in pending}
             for f in as_completed(futs):
                 k = futs[f]
@@ -205,7 +205,7 @@ def run_isolated(
             if key in results:
                 continue
             try:
-                with ProcessPoolExecutor(max_workers=1, mp_context=ctx, initializer=guard.block) as ex1:
+                with ProcessPoolExecutor(max_workers=1, mp_context=ctx, initializer=quiet.worker_init) as ex1:
                     record(key, ex1.submit(fn, *args).result())
             except BrokenProcessPool:
                 record(key, {"status": "crashed", "error_class": "BrokenProcessPool",

@@ -114,6 +114,10 @@ def test_canaries_planted_in_every_carrier(canary_run):
     assert TOKEN.encode() in bytes(xmp)  # XMP
     desc = ImageCms.getProfileDescription(ImageCms.ImageCmsProfile(io.BytesIO(icc)))
     assert TOKEN in desc  # ICC description
+    no_icc = next(f for f in files if f.name.endswith("4004.JPG"))
+    with Image.open(no_icc) as im:
+        assert im.info.get("icc_profile") is None  # takes the no-ICC decode path
+        assert TOKEN.encode() in im.info.get("comment", b"")  # JPEG COM segment
 
 
 def test_canary_sources_flow_through_the_whole_pipeline(canary_run):
@@ -130,6 +134,11 @@ def test_canary_sources_flow_through_the_whole_pipeline(canary_run):
         "AND e.status IN ('done','skipped_existing')", (like,)).fetchone()[0]
     assert ok >= 4 and err >= 1  # 3 JPEG + 1 HEIC decoded, the corrupt one failed
     assert exported >= 1  # canary metadata really reached the export stage
+    com = con.execute(
+        "SELECT e.status, c.data FROM exports e JOIN photos p ON p.id=e.photo_id "
+        "JOIN crops c ON c.photo_id=p.id WHERE p.path LIKE ?", (f"%{TOKEN}_4004.JPG",)).fetchall()
+    assert com and all(r[0] in ("done", "skipped_existing") for r in com)
+    assert all(json.loads(r[1])["mode"] == "borderless" for r in com)  # crop mode, not bordered
 
 
 # ---------------------------------------------------------------- scans
@@ -169,6 +178,39 @@ def test_no_leak_in_logs_and_crash_dumps(canary_run):
 
 
 # ---------------------------------------------------------------- export folder contents (D7)
+
+
+ALLOWED_MARKERS = {0xD8, 0xE0, 0xE2, 0xDB, 0xC4, 0xDA, 0xD9, 0xDD} | set(range(0xD0, 0xD8)) | (
+    set(range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC})
+
+
+def _markers(data: bytes) -> list[int]:
+    """Independent JPEG marker walk for the test (SOI to EOI, skipping entropy data)."""
+    assert data[:2] == b"\xff\xd8"
+    out, i = [0xD8], 2
+    while i < len(data):
+        assert data[i] == 0xFF
+        while data[i] == 0xFF:
+            i += 1
+        m = data[i]
+        i += 1
+        out.append(m)
+        if m == 0xD9:
+            break
+        if 0xD0 <= m <= 0xD7:
+            continue
+        i += int.from_bytes(data[i:i + 2], "big")
+        if m == 0xDA:
+            while not (data[i] == 0xFF and data[i + 1] not in (0x00, *range(0xD0, 0xD8))):
+                i += 1
+    return out
+
+
+def test_print_ready_files_have_only_allowlisted_segments(canary_run):
+    files = sorted((canary_run["out"] / EVENT / "print_ready").glob("*.jpg"))
+    assert files
+    bad = sum(1 for f in files if set(_markers(f.read_bytes())) - ALLOWED_MARKERS)
+    assert bad == 0, f"{bad} of {len(files)} outputs carry a non-allowlisted JPEG segment"
 
 
 def test_export_file_names_are_opaque(canary_run):
@@ -401,3 +443,50 @@ def test_scanner_treats_jpeg_bytes_by_content_not_suffix(tmp_path):
     p.write_bytes(data + TOKEN.encode())
     assert leakscan.scan_file(p, [TOKEN])["canary"] == 1
     assert noisy["canary"] == 0
+
+
+# ---------------------------------------------------------------- interpreter stderr (Security review)
+
+
+def test_worker_warnings_and_tracebacks_print_no_paths(capfd):
+    import traceback
+    import warnings
+
+    from fpc_poc.decode import run_isolated
+
+    secret = f"/home/someone/{TOKEN}/IMG_0001.JPG"
+    run_isolated(warnings.warn, [(1, (f"cannot read {secret}", UserWarning))], workers=1)
+    run_isolated(traceback.print_stack, [(2, ())], workers=1)  # what a worker traceback looks like
+    err = capfd.readouterr().err
+    _assert_clean({"worker.stderr": leakscan.scan_text(err, [TOKEN], [str(Path.home())])})
+    has_code = "fpc_poc: warning class=UserWarning code=W_LIB" in err
+    assert has_code
+
+
+def test_workers_ignore_sigint():
+    import signal
+
+    from fpc_poc.decode import run_isolated
+
+    res = run_isolated(signal.getsignal, [(1, (signal.SIGINT,))], workers=1)
+    assert res[1] == signal.SIG_IGN  # Ctrl+C is handled by the parent only
+
+
+def test_main_process_warning_prints_category_and_code_only(tmp_path):
+    script = (
+        "import sys, warnings\n"
+        "from fpc_poc import __main__ as m, pipeline\n"
+        f"pipeline.summary = lambda *a: warnings.warn('bad EXIF in {tmp_path}/{TOKEN}/x.jpg') or {{}}\n"
+        "sys.exit(m.cli(sys.argv[1:]))\n"
+    )
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(POC) + os.pathsep + env.get("PYTHONPATH", "")
+    cp = subprocess.run([sys.executable, "-c", script, "--data", str(tmp_path / "data"), "summary",
+                         "--event", "X"], cwd=tmp_path, env=env, capture_output=True, text=True,
+                        timeout=TIMEOUT, check=False)
+    p = Proc(cp)
+    rc = p.rc
+    assert rc == 0
+    _assert_clean({"stderr": leakscan.scan_text(p.stderr, [TOKEN], [str(tmp_path)])})
+    exact = p.stderr == "fpc_poc: warning class=UserWarning code=W_LIB\n"
+    assert exact, "main-process warning must print category and code only"
