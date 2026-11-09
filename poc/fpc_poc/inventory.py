@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import stat as stat_mod
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from . import config
 
@@ -39,6 +39,11 @@ def current_state(path: str) -> str:
     except OSError:
         return "missing"
     return cloud_state(getattr(st, "st_file_attributes", None))
+
+
+def rel_posix(path: PurePath, root: PurePath) -> str:
+    """Path relative to the event root, always with '/' so the DB reads the same on every OS."""
+    return path.relative_to(root).as_posix()
 
 
 @dataclass
@@ -81,7 +86,7 @@ def scan(roots: list[Path]) -> list[Entry]:
                         else "unknown"
                     )
                     out.append(Entry(
-                        path=de.path, rel=str(Path(de.path).relative_to(root)), ext=ext,
+                        path=de.path, rel=rel_posix(Path(de.path), root), ext=ext,
                         size=st.st_size, mtime=st.st_mtime,
                         cloud_state=cloud_state(getattr(st, "st_file_attributes", None)),
                         kind=kind,

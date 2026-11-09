@@ -6,6 +6,11 @@
   python -m fpc_poc export --event "Japan 2024" --out D:\\Prints
   python -m fpc_poc status --event "Japan 2024"
   python -m fpc_poc integrity --event "Japan 2024"
+  python -m fpc_poc summary --event "Japan 2024"          # aggregate-only JSON for agents
+
+Output is aggregate-only (issue #13, D6): counts and timings, never paths, file names,
+capture times, hashes or exception messages. An uncaught exception prints only its class
+and an error code; a message-free traceback goes to <data>/logs/crash.log.
 """
 
 from __future__ import annotations
@@ -13,11 +18,15 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import traceback
 from collections import Counter
 from pathlib import Path
 
-from . import db, guard, pipeline
+from . import db, guard, pipeline, quiet
 from .config import Paths, default_data_dir
+
+EXIT_UNCAUGHT = 3
+_data_dir: Path | None = None  # set once arguments are parsed, for the crash log
 
 
 def _p(obj) -> None:
@@ -49,14 +58,16 @@ def main(argv: list[str] | None = None) -> int:
     add("status")
     add("integrity")
     add("review")
+    add("summary", help="aggregate-only JSON: counts and timings, for agents")
     a = ap.parse_args(argv)
 
+    global _data_dir
+    _data_dir = a.data
     guard.block()  # nothing in this app talks to the network
     paths = Paths(a.data)
     con = db.connect(paths.db)
 
     if a.cmd == "run":
-        pipeline.log(f"data dir: {paths.root}")
         _p({"scan": pipeline.scan(con, a.event, a.roots)})
         _p({"ingest": pipeline.ingest(con, paths, a.event, a.workers)})
         _p({"features": pipeline.analyze(con, paths, a.event, a.workers)})
@@ -72,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
         _p({"crops": pipeline.propose_crops(con, a.event)})
         if a.out:
             _p({"export": pipeline.export(con, a.event, a.out, a.workers, a.allow_onedrive)})
-        _p({"integrity": pipeline.integrity(con, a.event)})
+        _p({"integrity": pipeline.integrity(con, a.event, paths.root / "reports")})
     elif a.cmd == "rank":
         _p(pipeline.group_and_rank(con, a.event, a.target))
     elif a.cmd == "crops":
@@ -80,9 +91,11 @@ def main(argv: list[str] | None = None) -> int:
     elif a.cmd == "export":
         _p(pipeline.export(con, a.event, a.out, a.workers, a.allow_onedrive))
     elif a.cmd == "integrity":
-        res = pipeline.integrity(con, a.event)
+        res = pipeline.integrity(con, a.event, paths.root / "reports")
         _p(res)
         return 1 if res["changed"] else 0
+    elif a.cmd == "summary":
+        _p(pipeline.summary(con, a.event))
     elif a.cmd == "status":
         st = Counter(r[0] for r in con.execute("SELECT status FROM photos WHERE event=?", (a.event,)))
         dec = Counter(db.review_state(con, a.event).values())
@@ -96,5 +109,38 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _crash_log(exc: BaseException, code: str) -> None:
+    """Class, code and frames (package-relative file, line, function). Never the message,
+    never an absolute path: third-party messages (Pillow, pillow-heif, OSError) carry paths."""
+    if _data_dir is None:
+        return
+    lines = [f"class={type(exc).__name__} code={code}"]
+    for fr in traceback.extract_tb(exc.__traceback__):
+        parts = Path(fr.filename).parts
+        name = "/".join(parts[parts.index("fpc_poc"):]) if "fpc_poc" in parts else Path(fr.filename).name
+        lines.append(f"  {name}:{fr.lineno} in {fr.name}")
+    try:
+        logs = _data_dir / "logs"
+        logs.mkdir(parents=True, exist_ok=True)
+        with open(logs / "crash.log", "a", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    except OSError:
+        pass
+
+
+def cli(argv: list[str] | None = None) -> int:
+    """Entry point with the top-level handler: class and code only, on stderr."""
+    quiet.install_main()  # library warnings print category and code, never a module path
+    try:
+        return main(argv)
+    except SystemExit:
+        raise
+    except BaseException as e:  # noqa: BLE001 - last line of defence against leaking messages
+        code = "E_INTERRUPTED" if isinstance(e, KeyboardInterrupt) else "E_UNCAUGHT"
+        _crash_log(e, code)
+        print(f"fpc_poc: error class={type(e).__name__} code={code}", file=sys.stderr)
+        return EXIT_UNCAUGHT
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(cli())

@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 from PIL import Image, ImageCms, ImageOps
 
-from . import config, guard
+from . import config, quiet
 from .inventory import current_state, is_openable
 
 _HEIF_REGISTERED = False
@@ -159,6 +159,14 @@ def task_ingest(path: str, cache_root: str) -> dict:
 # ---------------------------------------------------------------- isolation pool
 
 
+def worker_error(e: BaseException) -> dict:
+    """A per-item failure: the exception class and an error code, never str(e).
+
+    Third-party messages (Pillow, pillow-heif, OSError) routinely embed the source path.
+    """
+    return {"status": "error", "error_class": type(e).__name__, "error_code": "E_WORKER"}
+
+
 def run_isolated(
     fn: Callable[..., dict],
     jobs: list[tuple[Any, tuple]],
@@ -182,7 +190,7 @@ def run_isolated(
 
     pending = list(jobs)
     try:
-        with ProcessPoolExecutor(max_workers=workers, mp_context=ctx, initializer=guard.block) as ex:
+        with ProcessPoolExecutor(max_workers=workers, mp_context=ctx, initializer=quiet.worker_init) as ex:
             futs = {ex.submit(fn, *args): key for key, args in pending}
             for f in as_completed(futs):
                 k = futs[f]
@@ -191,16 +199,17 @@ def run_isolated(
                 except BrokenProcessPool:
                     raise
                 except Exception as e:  # noqa: BLE001 - per-item failure
-                    record(k, {"status": "error", "error": f"{type(e).__name__}: {e}"})
+                    record(k, worker_error(e))
     except BrokenProcessPool:
         for key, args in pending:
             if key in results:
                 continue
             try:
-                with ProcessPoolExecutor(max_workers=1, mp_context=ctx, initializer=guard.block) as ex1:
+                with ProcessPoolExecutor(max_workers=1, mp_context=ctx, initializer=quiet.worker_init) as ex1:
                     record(key, ex1.submit(fn, *args).result())
             except BrokenProcessPool:
-                record(key, {"status": "crashed", "error": "decoder process crashed"})
+                record(key, {"status": "crashed", "error_class": "BrokenProcessPool",
+                             "error_code": "E_CRASH"})
             except Exception as e:  # noqa: BLE001
-                record(key, {"status": "error", "error": f"{type(e).__name__}: {e}"})
+                record(key, worker_error(e))
     return results

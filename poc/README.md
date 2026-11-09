@@ -35,7 +35,16 @@ python -m fpc_poc export --event "Japan 2024" --out "C:\Prints"
 # Anytime
 python -m fpc_poc status    --event "Japan 2024"
 python -m fpc_poc integrity --event "Japan 2024"   # re-hash originals; exit 1 if any changed
+python -m fpc_poc summary   --event "Japan 2024"   # aggregate-only JSON (counts, timings) for agents
 ```
+
+**Output is aggregate-only** (issue #13, D6, D7). Commands print counts and timings, never paths, file names, capture times, hashes or exception messages. `photos.error` stores `status:CODE:ExceptionClass` (for example `error:E_DECODE:OSError`). The list of changed originals from `integrity` goes to `<data>/reports/integrity_changed.json`. An uncaught exception prints only `fpc_poc: error class=<Name> code=E_UNCAUGHT` (exit 3). Library warnings print only `fpc_poc: warning class=<Category> code=W_LIB`, in the main process and in decoder workers. Workers ignore Ctrl+C (the parent handles cancel), and any other worker stderr text is replaced by one `code=W_STDERR` line.
+
+**The crash log deliberately leaves out exception messages** (Security ruling on PR #39). `<data>/logs/crash.log` records the class, the code and package-relative frames (`fpc_poc/pipeline.py:123 in export`). Messages from Pillow, pillow-heif and `OSError` carry source paths, so triage uses the class, the frames and a synthetic repro.
+
+The export folder carries output names and opaque photo IDs only. Source details stay in the database. Print-ready JPEGs contain only SOI, APP0 (JFIF), APP2 (ICC), DQT, SOF, DHT, DRI, SOS, RSTn and EOI; `verify` reports `METADATA_PRESENT` for anything else (COM, APP1 EXIF/XMP, APP13 IPTC). Export refuses any overlap between the export folder and a source folder, in either direction. Leftover `{PREFIX}_NNNN.tmp` files from an interrupted export are removed on the next export; nothing else is deleted.
+
+**The event label appears on the USB.** `--event` becomes the export folder name and the file-name prefix (`Holiday 2026` gives `Holiday_2026/print_ready/HOLIDAY2_0001.jpg`), and the print lab sees both. Use a generic label such as "Holiday 2026", never a name with people, places or dates you would not hand to the lab. The label is always typed by the user; it is never defaulted from a source folder name.
 
 **Online-only OneDrive files are not downloaded.** They show as `unavailable` (see `status`, and *Import problems* in the UI). To include them, right-click the folder in Explorer, choose **Always keep on this device**, wait for the sync, and run `run` again. Already processed photos are skipped.
 
@@ -44,7 +53,7 @@ Re-running is safe and incremental. Interrupting with Ctrl+C or closing the wind
 ### Try it without personal photos
 
 ```powershell
-python tools\make_sample_event.py "$env:TEMP\fpc-sample"
+python tools\make_sample_event.py "$env:TEMP\fpc-sample"   # add --canary TOKEN to plant leak canaries
 $env:FPC_POC_CRASH_MARKER = "CRASHME"       # makes one file crash the decoder on purpose
 python -m fpc_poc --data "$env:TEMP\fpc-data" run --event Sample "$env:TEMP\fpc-sample" --auto-approve 8 --out "$env:TEMP\fpc-prints"
 python -m fpc_poc --data "$env:TEMP\fpc-data" review --event Sample
@@ -55,7 +64,7 @@ python -m fpc_poc --data "$env:TEMP\fpc-data" review --event Sample
 ### Tests
 
 ```powershell
-pytest poc\tests -q      # 218 tests, including an end-to-end run on the synthetic event
+pytest poc\tests -q      # 253 tests, including an end-to-end run on the synthetic event and the canary leak scan
 ```
 
 ---
@@ -76,6 +85,7 @@ pytest poc\tests -q      # 218 tests, including an end-to-end run on the synthet
 | Originals never change | All sources re-hashed after a full run: zero changes | `test_e2e_originals_untouched`, `integrity` command |
 | Decisions are durable, with undo | Append-only log; undo appends; state is a projection of the log | `test_decisions_append_only_with_undo` |
 | Resume after interruption | Killed mid-ingest: 13 of 48 committed. The rerun processed only the 35 pending, and 33 of those were cache hits from derivatives written before the kill. | manual run (below) |
+| Nothing leaks to agents or the print lab (D6, D7, S2-D11) | Canaries in a folder name, file names, EXIF, MakerNote, XMP and the ICC description never appear in stdout, stderr, DB error fields, logs, crash dumps or the export folder; no absolute paths or timestamps either. Failures report counts only. | `test_leaks.py` |
 | No network | A socket guard is installed in the main process and every worker | `guard.py` |
 
 ## Measurements (indicative only)
@@ -105,7 +115,9 @@ Straight-line extrapolation for 5,000 photos with 4 workers is about 30 minutes 
 ```
 poc/
   fpc_poc/
-    __main__.py   CLI: run, rank, crops, export, review, status, integrity
+    __main__.py   CLI: run, rank, crops, export, review, status, integrity, summary; top-level handler
+    leakscan.py   canary / absolute-path / timestamp scanner (counts only), reused by the pre-USB gate
+    quiet.py      sanitised warnings and worker stderr, SIGINT ignored in workers
     config.py     paths and uncalibrated thresholds
     inventory.py  pass 1: attributes only, cloud state, Live Photo pairing
     decode.py     load_oriented() contract, sRGB, ingest task, crash-isolated pool
@@ -120,4 +132,5 @@ poc/
     ui.py         PySide6 review grid, preview with overlays, crop drag
   tools/make_sample_event.py   synthetic event covering every risky path
   tests/test_poc.py            unit + end-to-end tests
+  tests/test_leaks.py          canary and leak tests (issue #13)
 ```
