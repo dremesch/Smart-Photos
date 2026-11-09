@@ -221,6 +221,7 @@ def main(out: Path, canary: str | None = None) -> None:
     good = (d1 / "IMG_1001.JPG").read_bytes()
     (d3 / "IMG_3999_corrupt.JPG").write_bytes(good[: len(good) // 3])
     (d3 / "IMG_3998_CRASHME.JPG").write_bytes(good)  # crashes the decoder when the marker env var is set
+    (d3 / "IMG_3997_HANGME.JPG").write_bytes(good)  # hangs the decoder when FPC_POC_HANG_MARKER is set
     Image.new("RGB", (1170, 2532), (240, 240, 240)).save(d3 / "Screenshot 2024-04-04.png")
     (d3 / "notes.txt").write_text("not a photo")
     if canary:

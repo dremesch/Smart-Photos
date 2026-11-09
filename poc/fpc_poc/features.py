@@ -21,6 +21,7 @@ import numpy as np
 from PIL import Image
 
 REPO = Path(__file__).resolve().parents[2]
+VERSION = "poc-features-1"  # bump when compute() changes: quarantined items get a fresh chance
 
 
 @lru_cache(maxsize=1)

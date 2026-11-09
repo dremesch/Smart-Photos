@@ -8,12 +8,17 @@ corrupt EXIF/TIFF/MPO data) and idle pool workers hit by Ctrl+C would print them
 - ``worker_init()``: the pool initializer. Network guard, sanitised warnings, SIGINT ignored
   (the parent alone handles cancel), uncaught errors as class and code, and any other stderr
   text replaced by a single code line.
+- ``worker_main(rx, tx)``: the entry point of a decoder pool worker (issue #11). It runs
+  ``worker_init`` before anything else is imported or unpickled, makes the worker exit when
+  its parent dies (a hung worker would otherwise outlive a killed parent), then serves tasks.
 """
 
 from __future__ import annotations
 
+import os
 import signal
 import sys
+import threading
 import warnings
 
 from . import guard
@@ -77,3 +82,28 @@ def worker_init() -> None:
     sys.excepthook = _excepthook
     if sys.stderr is not None and not isinstance(sys.stderr, _SanitizedStream):
         sys.stderr = _SanitizedStream(sys.stderr)
+
+
+def _exit_with_parent() -> None:
+    """A daemon thread that ends this worker once its parent process is gone. The parent's
+    sentinel is a pipe on POSIX and a process handle on Windows; both signal on exit."""
+    import multiprocessing
+    from multiprocessing.connection import wait
+
+    parent = multiprocessing.parent_process()
+    if parent is None or parent.sentinel is None:
+        return
+
+    def watch() -> None:
+        wait([parent.sentinel])
+        os._exit(70)
+
+    threading.Thread(target=watch, name="fpc-parent-watch", daemon=True).start()
+
+
+def worker_main(rx, tx) -> None:
+    worker_init()
+    _exit_with_parent()
+    from .decode import serve  # imported after init: library warnings are already sanitised
+
+    serve(rx, tx)

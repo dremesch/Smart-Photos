@@ -23,7 +23,15 @@ CREATE TABLE IF NOT EXISTS decisions(id INTEGER PRIMARY KEY, photo_id INT, actio
 CREATE TABLE IF NOT EXISTS crops(photo_id INT PRIMARY KEY, data TEXT, risk TEXT, manual INT DEFAULT 0);
 CREATE TABLE IF NOT EXISTS exports(photo_id INT, out_path TEXT, status TEXT, detail TEXT, ts TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS timings(event TEXT, stage TEXT, seconds REAL, PRIMARY KEY(event, stage));
+CREATE TABLE IF NOT EXISTS attempts(id INTEGER PRIMARY KEY, photo_id INT, stage TEXT, version TEXT,
+  outcome TEXT, ts TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS attempts_item ON attempts(stage, version, photo_id);
 """
+
+# Attempt ledger (issue #11, S2-D8). A row is committed before each task is dispatched, with
+# outcome NULL. The result handler sets the outcome in the same transaction as the result.
+# A strike is a timeout, a crash, or a row still NULL from a parent that died mid-task.
+STRIKE_OUTCOMES = ("timeout", "crashed")
 
 
 def connect(path: Path) -> sqlite3.Connection:
@@ -83,3 +91,25 @@ def record_timing(con: sqlite3.Connection, event: str, stage: str, seconds: floa
 def features(con: sqlite3.Connection, photo_id: int) -> dict:
     r = con.execute("SELECT data FROM features WHERE photo_id=?", (photo_id,)).fetchone()
     return json.loads(r[0]) if r else {}
+
+
+def attempt_start(con: sqlite3.Connection, photo_id: int, stage: str, version: str) -> int:
+    cur = con.execute("INSERT INTO attempts(photo_id, stage, version) VALUES(?,?,?)",
+                      (photo_id, stage, version))
+    con.commit()  # durable before dispatch: a parent killed mid-task still leaves the row
+    return cur.lastrowid
+
+
+def attempt_end(con: sqlite3.Connection, attempt_id: int, outcome: str) -> None:
+    """Set the outcome. No commit: the caller commits it together with the item's result."""
+    con.execute("UPDATE attempts SET outcome=? WHERE id=?", (outcome, attempt_id))
+
+
+def strikes(con: sqlite3.Connection, stage: str, version: str, photo_id: int | None = None) -> dict[int, int]:
+    q = ("SELECT photo_id, COUNT(*) FROM attempts WHERE stage=? AND version=? AND "
+         f"(outcome IS NULL OR outcome IN ({','.join('?' * len(STRIKE_OUTCOMES))}))")
+    args: list = [stage, version, *STRIKE_OUTCOMES]
+    if photo_id is not None:
+        q += " AND photo_id=?"
+        args.append(photo_id)
+    return {r[0]: r[1] for r in con.execute(q + " GROUP BY photo_id", args)}

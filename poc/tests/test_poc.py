@@ -100,6 +100,11 @@ def e2e(tmp_path_factory):
     make_sample_event.main(event_dir)
     mp = pytest.MonkeyPatch()
     mp.setenv("FPC_POC_CRASH_MARKER", "CRASHME")
+    mp.setenv("FPC_POC_HANG_MARKER", "HANGME")  # one file hangs its decoder (issue #11)
+    from fpc_poc import config
+
+    mp.setattr(config, "DECODE_DEADLINE_S", 2.0)
+    mp.setattr(config, "KILL_GRACE_S", 0.5)
     rc = main(["--data", str(data), "run", "--event", "Test", str(event_dir),
                "--auto-approve", "8", "--out", str(out), "--workers", "2"])
     mp.undo()
@@ -114,9 +119,24 @@ def test_e2e_hostile_files_isolated(e2e):
     rows = {r["rel"].split("/")[-1]: r for r in con.execute("SELECT * FROM photos")}
     assert rows["IMG_3998_CRASHME.JPG"]["error"].startswith("crashed")
     assert rows["IMG_3999_corrupt.JPG"]["status"] == "import_error"
+    assert rows["IMG_3999_corrupt.JPG"]["error"].startswith("error:E_DECODE:")
     assert rows["Screenshot 2024-04-04.png"]["status"] == "excluded"
     assert rows["IMG_2200.HEIC"]["status"] == "ok"
     assert rows["IMG_2200.HEIC"]["companion"].endswith("IMG_2200.MOV")
+
+
+def test_e2e_hung_decoder_times_out_and_every_other_item_completes(e2e):
+    con, *_ = e2e
+    rows = {r["rel"].split("/")[-1]: r for r in con.execute("SELECT * FROM photos")}
+    hung = rows["IMG_3997_HANGME.JPG"]
+    assert (hung["status"], hung["error"]) == ("timeout", "timeout:E_TIMEOUT:DeadlineExceeded")
+    hostile = {"IMG_3997_HANGME.JPG", "IMG_3998_CRASHME.JPG", "IMG_3999_corrupt.JPG"}
+    photos = [r for n, r in rows.items() if n not in hostile and r["status"] != "excluded"]
+    assert photos and all(r["status"] == "ok" for r in photos)
+    analysed = con.execute("SELECT COUNT(*) FROM features").fetchone()[0]
+    assert analysed == len(photos)
+    ingest_s = con.execute("SELECT seconds FROM timings WHERE stage='ingest'").fetchone()[0]
+    assert ingest_s < 2.0 + 0.5 + 30  # the hang cost one deadline, not the whole run
 
 
 def test_e2e_orientation(e2e):

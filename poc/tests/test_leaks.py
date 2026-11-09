@@ -51,6 +51,9 @@ def _run(data: Path, *args: str, cwd: Path) -> Proc:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(POC) + os.pathsep + env.get("PYTHONPATH", "")
     env["FPC_POC_CRASH_MARKER"] = "CRASHME"
+    env["FPC_POC_HANG_MARKER"] = "HANGME"  # one file hangs its decoder (issue #11)
+    env["FPC_POC_DECODE_DEADLINE_S"] = "2"
+    env["FPC_POC_KILL_GRACE_S"] = "0.5"
     env.pop("PYTHONFAULTHANDLER", None)
     return Proc(subprocess.run([sys.executable, "-m", "fpc_poc", "--data", str(data), *args],
                                cwd=cwd, env=env, capture_output=True, text=True, timeout=TIMEOUT,
@@ -70,6 +73,10 @@ def canary_run(tmp_path_factory):
     procs = {}
     procs["run"] = _run(data, "run", "--event", EVENT, str(event_dir), "--target", "1000",
                         "--auto-approve", "1000", "--out", str(out), "--workers", "2", cwd=root)
+    # First strike for the crasher and the hanger; a second run quarantines both (issue #11).
+    procs["summary_first_run"] = _run(data, "summary", "--event", EVENT, cwd=root)
+    procs["rerun"] = _run(data, "run", "--event", EVENT, str(event_dir), "--target", "1000",
+                          "--workers", "2", cwd=root)
     # An interrupted export leaves a .tmp behind; the next export must clean it up.
     stale = out / EVENT / "print_ready" / "TEST_9999.tmp"
     stale.parent.mkdir(parents=True, exist_ok=True)
@@ -314,21 +321,21 @@ def test_integrity_writes_changed_list_to_data_dir_only(tmp_path, capsys):
 
 SUMMARY_KEYS = {
     "photos": {"total", "discovered", "excluded", "unavailable", "ok", "import_error", "missing",
+               "timeout", "crashed", "quarantined", "other"},
+    "errors": {"E_DECODE", "E_CRASH", "E_SOURCE_CHANGED", "E_WORKER", "E_TIMEOUT", "E_QUARANTINED",
                "other"},
-    "errors": {"E_DECODE", "E_CRASH", "E_SOURCE_CHANGED", "E_WORKER", "other"},
     "groups": {"exact", "near", "burst", "ambiguous", "other"},
     "ranking": {"scored", "recommended"},
     "reason_codes": {"FACES", "SOFT", "EXPOSURE", "LOW_RES", "INCOMPLETE_METADATA", "PET", "OTHER"},
     "decisions": {"approve", "reject", "log_rows", "undo"},
     "crop_risk": {"likely_safe", "needs_review", "crop_conflict", "manual", "other"},
-    "exports": {"done", "skipped_existing", "error", "unavailable", "crashed", "verified",
-                "warnings", "other"},
+    "exports": {"done", "skipped_existing", "error", "unavailable", "crashed", "timeout",
+                "quarantined", "verified", "warnings", "other"},
     "timings": {"scan_s", "ingest_s", "analyze_s", "rank_s", "crops_s", "export_s", "integrity_s"},
 }
 
 
-def test_summary_schema_is_aggregate_only(canary_run):
-    p = canary_run["procs"]["summary"]
+def _check_summary_schema(p: Proc) -> dict:
     rc = p.rc
     assert rc == 0
     s = json.loads(p.stdout)
@@ -343,8 +350,20 @@ def test_summary_schema_is_aggregate_only(canary_run):
                 assert k.endswith("_s")
             else:
                 assert type(v) is int  # counts are integers
+    return s
+
+
+def test_summary_schema_is_aggregate_only(canary_run):
+    first = _check_summary_schema(canary_run["procs"]["summary_first_run"])
+    assert first["errors"]["E_CRASH"] >= 1 and first["errors"]["E_DECODE"] >= 1
+    assert first["errors"]["E_TIMEOUT"] >= 1  # the hanger: a code, never message text
+    assert first["photos"]["timeout"] >= 1 and first["photos"]["crashed"] >= 1
+    s = _check_summary_schema(canary_run["procs"]["summary"])
     assert s["photos"]["total"] > 0 and s["decisions"]["approve"] > 0
-    assert s["errors"]["E_CRASH"] >= 1 and s["errors"]["E_DECODE"] >= 1
+    assert s["errors"]["E_DECODE"] >= 1
+    assert s["errors"]["E_QUARANTINED"] >= 2  # second strike for the crasher and the hanger
+    assert s["photos"]["quarantined"] >= 2
+    assert "other" not in s["errors"]
 
 
 # ---------------------------------------------------------------- uncaught exceptions
