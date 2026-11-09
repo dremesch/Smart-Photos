@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import random
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -13,7 +12,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fpc_poc import crop, db, inventory  # noqa: E402
-from fpc_poc.__main__ import main  # noqa: E402
 
 TOOLS = Path(__file__).resolve().parents[1] / "tools"
 
@@ -90,28 +88,9 @@ def test_decisions_append_only_with_undo(tmp_path):
 
 
 @pytest.fixture(scope="module")
-def e2e(tmp_path_factory):
-    pytest.importorskip("skimage")
-    sys.path.insert(0, str(TOOLS))
-    import make_sample_event
-
-    root = tmp_path_factory.mktemp("e2e")
-    event_dir, data, out = root / "event", root / "data", root / "prints"
-    make_sample_event.main(event_dir)
-    mp = pytest.MonkeyPatch()
-    mp.setenv("FPC_POC_CRASH_MARKER", "CRASHME")
-    mp.setenv("FPC_POC_HANG_MARKER", "HANGME")  # one file hangs its decoder (issue #11)
-    from fpc_poc import config
-
-    mp.setattr(config, "DECODE_DEADLINE_S", 2.0)
-    mp.setattr(config, "KILL_GRACE_S", 0.5)
-    rc = main(["--data", str(data), "run", "--event", "Test", str(event_dir),
-               "--auto-approve", "8", "--out", str(out), "--workers", "2"])
-    mp.undo()
-    assert rc == 0
-    con = sqlite3.connect(data / "poc.db")
-    con.row_factory = sqlite3.Row
-    return con, event_dir, out
+def e2e(synthetic_event):  # built once per session in conftest.py
+    s = synthetic_event
+    return s["con"], s["event_dir"], s["out"]
 
 
 def test_e2e_hostile_files_isolated(e2e):

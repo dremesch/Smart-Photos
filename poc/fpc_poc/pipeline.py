@@ -340,9 +340,13 @@ def export(con: sqlite3.Connection, event: str, out_root: Path, workers: int | N
 
     approved = [i for i, s in db.review_state(con, event).items() if s == "approve"]
     rows = con.execute(
-        f"SELECT p.id, p.path, p.sha256, p.capture_ts, c.data FROM photos p JOIN crops c ON c.photo_id=p.id "
-        f"WHERE p.id IN ({','.join('?' * len(approved))}) ORDER BY p.capture_ts, p.path", approved
+        f"SELECT p.id, p.path, p.sha256, p.capture_ts, p.width, p.height, c.data, c.manual FROM photos p "
+        f"LEFT JOIN crops c ON c.photo_id=p.id WHERE p.width IS NOT NULL "
+        f"AND p.id IN ({','.join('?' * len(approved))}) ORDER BY p.capture_ts, p.path", approved
     ).fetchall() if approved else []
+    # S2-D4 / #25: a crop nobody reviewed, or no crop at all, prints bordered.
+    eff = {r["id"]: cropmod.for_export(r["data"], r["manual"], r["width"], r["height"]) for r in rows}
+    fallback = sum(not (r["data"] and r["manual"]) for r in rows)
     (base / "print_ready").mkdir(parents=True, exist_ok=True)
     (base / "manifests").mkdir(exist_ok=True)
     (base / "reports").mkdir(exist_ok=True)
@@ -371,7 +375,7 @@ def export(con: sqlite3.Connection, event: str, out_root: Path, workers: int | N
         if r["id"] in quarantined:
             record(r["id"], worker_error("TwoStrikes", "E_QUARANTINED"))
         else:
-            jobs.append((r["id"], (r["path"], json.loads(r["data"]), str(out), r["sha256"])))
+            jobs.append((r["id"], (r["path"], eff[r["id"]], str(out), r["sha256"])))
     ledger.run(task_export, jobs, workers, lambda pid, res: record(pid, ledger.end(pid, res)),
                config.EXPORT_DEADLINE_S)
     # D7: the export folder goes to the print lab. Output names and opaque IDs only:
@@ -384,7 +388,7 @@ def export(con: sqlite3.Connection, event: str, out_root: Path, workers: int | N
             w.writerow([names[r["id"]].name, r["id"], res.get("status"), res.get("verified")])
     crops = {}
     for r in rows:
-        c = json.loads(r["data"])
+        c = eff[r["id"]]
         crops[str(r["id"])] = {"output": names[r["id"]].name, **{k: c[k] for k in CROP_MANIFEST_KEYS}}
     (base / "manifests" / "crop_decisions.json").write_text(json.dumps(crops, indent=1))
     summary = Counter(r.get("status") for r in results.values())
@@ -395,7 +399,7 @@ def export(con: sqlite3.Connection, event: str, out_root: Path, workers: int | N
     (base / "reports" / "export_summary.json").write_text(json.dumps(
         {"summary": summary, "items": items}, indent=1))
     db.record_timing(con, event, "export", time.time() - t)
-    return {**summary, "tmp_removed": tmp_removed}
+    return {**summary, "tmp_removed": tmp_removed, "bordered_fallback": fallback}
 
 
 # ---------------------------------------------------------------- integrity

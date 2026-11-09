@@ -47,9 +47,9 @@ def review_state(con: sqlite3.Connection, event: str) -> dict[int, str]:
     undone = {r[0] for r in con.execute("SELECT undoes FROM decisions WHERE undoes IS NOT NULL")}
     rows = con.execute(
         "SELECT d.id, d.photo_id, d.action FROM decisions d JOIN photos p ON p.id=d.photo_id "
-        "WHERE p.event=? AND d.action!='undo' ORDER BY d.id",
+        "WHERE p.event=? AND d.action IN ('approve','reject','clear') ORDER BY d.id",
         (event,),
-    )
+    )  # reason tags ("reason:BLINK") and undo rows are events, not states
     for r in rows:
         if r["id"] in undone:
             continue
@@ -80,6 +80,17 @@ def undo_last(con: sqlite3.Connection, event: str) -> int | None:
             con.commit()
             return r["photo_id"]
     return None
+
+
+REASON_CODES = ("BLINK", "AWAY", "SOFT", "BG", "CROP", "BETTER", "OTHER", "MISSED")  # keys 1-8, S2-D3
+
+
+def reasons(con: sqlite3.Connection, photo_id: int) -> list[str]:
+    """Reason codes tagged on a photo, oldest first, minus any that were undone."""
+    undone = {r[0] for r in con.execute("SELECT undoes FROM decisions WHERE undoes IS NOT NULL")}
+    return [r["action"].split(":", 1)[1] for r in con.execute(
+        "SELECT id, action FROM decisions WHERE photo_id=? AND action LIKE 'reason:%' ORDER BY id",
+        (photo_id,)) if r["id"] not in undone]
 
 
 def record_timing(con: sqlite3.Connection, event: str, stage: str, seconds: float) -> None:
