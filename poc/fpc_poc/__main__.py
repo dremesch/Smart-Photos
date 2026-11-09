@@ -2,6 +2,7 @@
 
   python -m fpc_poc run    --event "Japan 2024" D:\\OneDrive\\Pictures\\Japan2024 [--auto-approve 20] [--out D:\\Prints]
   python -m fpc_poc review --event "Japan 2024"            # PySide6 review UI
+  python -m fpc_poc review --event "Japan 2024" --manual   # model-free fallback (#25)
   python -m fpc_poc crops  --event "Japan 2024"
   python -m fpc_poc export --event "Japan 2024" --out D:\\Prints
   python -m fpc_poc status --event "Japan 2024"
@@ -57,7 +58,8 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--allow-onedrive", action="store_true")
     add("status")
     add("integrity")
-    add("review")
+    add("review").add_argument("--manual", action="store_true",
+                               help="model-free review: capture order, no scores, bordered prints")
     add("summary", help="aggregate-only JSON: counts and timings, for agents")
     a = ap.parse_args(argv)
 
@@ -105,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     elif a.cmd == "review":
         from .ui import run_ui
 
-        return run_ui(con, paths, a.event)
+        return run_ui(con, paths, a.event, mode="manual" if a.manual else "assisted")
     return 0
 
 

@@ -26,8 +26,9 @@ cd poc
 python -m fpc_poc run --event "Japan 2024" "C:\Users\<you>\OneDrive\Pictures\Japan 2024"
 
 # 2. Review: A approve · X reject · U clear · Ctrl+Z undo · C compare group · P propose crops
-#    B bordered/borderless · drag the dashed crop to override it
+#    B bordered/borderless · drag the dashed crop to override it · 1-8 reason tag · M switch mode
 python -m fpc_poc review --event "Japan 2024"
+python -m fpc_poc review --event "Japan 2024" --manual   # model-free fallback, see below
 
 # 3. Export approved photos (refuses source folders; warns for OneDrive folders)
 python -m fpc_poc export --event "Japan 2024" --out "C:\Prints"
@@ -54,6 +55,20 @@ Re-running is safe and incremental. Interrupting with Ctrl+C or closing the wind
 
 Before each task is sent, an *attempt started* row is committed to the `attempts` table; the result handler writes its outcome in the same transaction as the result. A **strike** is a timeout, a crash, or an attempt row left open by a parent that was killed mid-task (power loss, TerminateProcess). A `timeout` or `crashed` item is retried on the next `run`; **two strikes** make it `quarantined` (`E_QUARANTINED`), and later runs skip it until `decode.DECODER_VERSION` (or `features.VERSION` for the features stage) changes. A graceful Ctrl+C closes in-flight attempts as `interrupted`, which is not a strike. `status` and `summary` count `timeout`, `crashed` and `quarantined`. A worker also exits by itself when its parent dies, so a hung decoder does not outlive a killed run (it needs the GIL to do so; a native hang that holds the GIL would survive the parent).
 
+### Manual review mode (issue #25, A-23)
+
+`review --manual` is the model-free fallback: use it if the detectors are not good enough, or simply if you prefer it. Press `M` at any time to switch between manual and assisted review.
+
+- **Capture-time order.** Photos without a timestamp come last. Groups are plain stacks shown in capture order, with no "best" marker.
+- **No AI output.** There are no scores, ranks, recommendations, reasons, face or pet boxes, or crop-risk colours, so a false face from the Haar detector cannot push a photo down. Re-rank (`R`) and propose crops (`P`) are switched off.
+- **Prints are bordered by default.** A bordered fit keeps the whole photo with white borders and has no trim risk. Press `B` on a photo for a centred borderless 4×6 crop, then drag it into place; press `B` again to return to bordered.
+- **Reason tags work in both modes.** Keys `1`–`8` tag the current photo BLINK, AWAY, SOFT, BG, CROP, BETTER, OTHER or MISSED without moving on. Tag first, then press `A` or `X`.
+- **Every decision is kept.** Both modes write to the same append-only decision log (ADR-0008). Approvals, rejections, tags and undos are events, so switching modes, or restarting in the other mode, loses nothing.
+
+**Unreviewed crops export bordered, in both modes (S2-D4).** Export uses a borderless crop only if a person chose it, by pressing `B` or dragging. A proposed crop that nobody touched, or an approved photo with no crop, prints bordered. `export` reports this as `bordered_fallback`, a count. In assisted mode, the details pane marks such a crop *not reviewed*. Bulk approval of `likely_safe` crops (A-13) will add a way to mark crops reviewed.
+
+The review window logs per-key handling time when it closes (`ui_key_p95` and `ui_key_max` in the `timings` table), for the RDP check on the VM. A test decides a 400-photo synthetic batch with keys only and checks that no decision rebuilds the grid.
+
 ### Try it without personal photos
 
 ```powershell
@@ -69,7 +84,8 @@ python -m fpc_poc --data "$env:TEMP\fpc-data" review --event Sample
 ### Tests
 
 ```powershell
-pytest poc\tests -q      # 268 tests, including an end-to-end run on the synthetic event and the canary leak scan
+pytest poc\tests -q      # 283 tests, including an end-to-end run on the synthetic event, the canary leak scan,
+                         # and the review UI in both modes (headless: QT_QPA_PLATFORM=offscreen)
 ```
 
 ---

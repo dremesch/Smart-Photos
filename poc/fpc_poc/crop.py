@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 
 from . import config
@@ -113,3 +114,12 @@ def bordered(w: int, h: int) -> Crop:
     target, _ = target_ratio(w, h)
     return Crop((w, h), target, "bordered", (0, 0, w, h), (0.0, 0.0, 1.0, 1.0),
                 "likely_safe", ["full image fitted with borders"], [])
+
+
+def for_export(data: str | None, manual: int | None, w: int, h: int) -> dict:
+    """The crop export prints (S2-D4, issue #25). Only a crop a person reviewed is used:
+    one they toggled or dragged (``manual``). An unreviewed proposal, or no crop at all,
+    prints bordered, which has no trim risk."""
+    if data and manual:
+        return json.loads(data)
+    return json.loads(json.dumps(bordered(w, h).to_dict()))  # same shape as a stored crop
