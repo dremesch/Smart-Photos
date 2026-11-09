@@ -18,10 +18,10 @@ from pathlib import Path
 
 import numpy as np
 
+from . import config, db, decode, features, grouping, inventory, ranking
 from . import crop as cropmod
-from . import db, features, grouping, inventory, ranking
 from .config import Paths
-from .decode import run_isolated, sha256_file, task_ingest
+from .decode import run_isolated, sha256_file, task_ingest, worker_error
 from .export import task_export
 
 
@@ -33,6 +33,49 @@ def log(msg: str) -> None:
 def error_field(m: dict) -> str:
     """The value stored in photos.error: status, code and exception class. Never the message."""
     return f"{m.get('status')}:{m.get('error_code', 'E_UNKNOWN')}:{m.get('error_class', 'Unknown')}"
+
+
+class _Ledger:
+    """Attempt rows for one stage run (issue #11, S2-D8). Every item gets a committed
+    attempt-started row before it is dispatched; its outcome is written with its result."""
+
+    def __init__(self, con: sqlite3.Connection, stage: str, version: str):
+        self.con, self.stage, self.version = con, stage, version
+        self.started: list[int] = []
+        self.open: dict[int, int] = {}
+
+    def quarantined(self) -> set[int]:
+        """Items with two strikes under the current version: skipped, never dispatched."""
+        return {pid for pid, n in db.strikes(self.con, self.stage, self.version).items()
+                if n >= config.STRIKES_TO_QUARANTINE}
+
+    def start(self, pid: int) -> None:
+        aid = db.attempt_start(self.con, pid, self.stage, self.version)
+        self.started.append(aid)
+        self.open[pid] = aid
+
+    def end(self, pid: int, res):
+        """Record the outcome (uncommitted). A second strike turns the result into quarantined."""
+        outcome = res.get("status", "ok") if isinstance(res, dict) else "ok"
+        db.attempt_end(self.con, self.open.pop(pid), outcome)
+        if outcome in db.STRIKE_OUTCOMES and db.strikes(self.con, self.stage, self.version, pid).get(
+                pid, 0) >= config.STRIKES_TO_QUARANTINE:
+            return {**res, "status": "quarantined", "error_code": "E_QUARANTINED"}
+        return res
+
+    def run(self, fn, jobs, workers, on_result, deadline: float) -> dict:
+        try:
+            return run_isolated(fn, jobs, workers, on_result, on_start=self.start, deadline=deadline)
+        except KeyboardInterrupt:
+            # A graceful Ctrl+C is not the items' fault: close their attempts without a strike.
+            # A hard kill or power loss never gets here, so those rows stay open and count.
+            self.con.rollback()
+            if self.started:
+                self.con.execute(
+                    f"UPDATE attempts SET outcome='interrupted' WHERE outcome IS NULL AND id IN "
+                    f"({','.join('?' * len(self.started))})", self.started)
+                self.con.commit()
+            raise
 
 
 # ---------------------------------------------------------------- 1. inventory pass 1
@@ -63,7 +106,7 @@ def scan(con: sqlite3.Connection, event: str, roots: list[Path]) -> Counter:
                 (event, e.path, e.rel, e.ext, e.size, e.mtime, e.cloud_state, status, e.companion))
         else:
             changed = old["size"] != e.size or old["mtime"] != e.mtime
-            keep = old["status"] in ("ok", "import_error", "crashed") and not changed
+            keep = old["status"] in KEEP_STATUSES and not changed
             con.execute(
                 "UPDATE photos SET rel=?, size=?, mtime=?, cloud_state=?, status=?, companion=? WHERE id=?",
                 (e.rel, e.size, e.mtime, e.cloud_state, old["status"] if keep else status, e.companion,
@@ -80,21 +123,40 @@ def scan(con: sqlite3.Connection, event: str, roots: list[Path]) -> Counter:
 # ---------------------------------------------------------------- 2. ingest (pass 2) + decode
 
 
+# Statuses a rescan keeps for an unchanged file, and the ones ingest (re)tries. A timeout or
+# crash is one strike and is retried; two strikes means quarantined, which is retried only
+# under a new decoder version (issue #11).
+KEEP_STATUSES = ("ok", "import_error", "timeout", "crashed", "quarantined")
+INGEST_STATUSES = ("discovered", "unavailable", "timeout", "crashed", "quarantined")
+
+
 def ingest(con: sqlite3.Connection, paths: Paths, event: str, workers: int | None = None) -> Counter:
     rows = con.execute(
-        "SELECT id, path FROM photos WHERE event=? AND status IN ('discovered','unavailable')", (event,)
-    ).fetchall()
+        f"SELECT id, path, status FROM photos WHERE event=? AND status IN "
+        f"({','.join('?' * len(INGEST_STATUSES))})", (event, *INGEST_STATUSES)).fetchall()
+    ledger = _Ledger(con, "ingest", decode.DECODER_VERSION)
+    quarantined = ledger.quarantined()
+    c: Counter = Counter()
     jobs = []
     for r in rows:  # cheap attribute re-check before handing to workers
+        if r["id"] in quarantined:
+            c["quarantined"] += 1
+            if r["status"] != "quarantined":  # e.g. a strike left by a parent that was killed
+                con.execute("UPDATE photos SET status='quarantined', error=? WHERE id=?",
+                            (error_field(worker_error("TwoStrikes", "E_QUARANTINED")), r["id"]))
+            continue
         st = inventory.current_state(r["path"])
         if inventory.is_openable(st):
             jobs.append((r["id"], (r["path"], str(paths.root / "cache"))))
         else:
             con.execute("UPDATE photos SET status='unavailable', cloud_state=? WHERE id=?", (st, r["id"]))
-    c: Counter = Counter()
+    con.commit()
     n = len(jobs)
+    done = 0
 
     def on_result(pid: int, m: dict) -> None:
+        nonlocal done
+        m = ledger.end(pid, m)
         st = m.get("status")
         c[st] += 1
         c["cache_hit"] += bool(m.get("cache_hit"))
@@ -109,18 +171,20 @@ def ingest(con: sqlite3.Connection, paths: Paths, event: str, workers: int | Non
         elif st == "unavailable":
             con.execute("UPDATE photos SET status='unavailable', cloud_state=? WHERE id=?",
                         (m.get("cloud_state"), pid))
+        elif st in ("timeout", "crashed", "quarantined"):
+            con.execute("UPDATE photos SET status=?, error=? WHERE id=?", (st, error_field(m), pid))
         else:
-            if st == "error":
-                m = {**m, "error_code": "E_DECODE"}  # the ingest task is the decoder
+            if m.get("error_code", "E_WORKER") == "E_WORKER":  # generic code only: the ingest
+                m = {**m, "error_code": "E_DECODE"}  # task is the decoder; keep specific codes
             con.execute("UPDATE photos SET status='import_error', error=? WHERE id=?",
                         (error_field(m), pid))
-        con.commit()  # per-item commit = resumable
-        done = sum(v for k, v in c.items() if k != "cache_hit")
+        con.commit()  # result and attempt outcome in one transaction = resumable
+        done += 1
         if done % 25 == 0 or done == n:
             log(f"ingest {done}/{n}")
 
     t = time.time()
-    run_isolated(task_ingest, jobs, workers, on_result)
+    ledger.run(task_ingest, jobs, workers, on_result, config.DECODE_DEADLINE_S)
     c["seconds"] = round(time.time() - t, 2)
     db.record_timing(con, event, "ingest", time.time() - t)
     return c
@@ -133,19 +197,25 @@ def analyze(con: sqlite3.Connection, paths: Paths, event: str, workers: int | No
     rows = con.execute(
         "SELECT p.id, p.sha256 FROM photos p LEFT JOIN features f ON f.photo_id=p.id "
         "WHERE p.event=? AND p.status='ok' AND f.photo_id IS NULL", (event,)).fetchall()
-    jobs = [(r["id"], (str(paths.deriv / f"{r['sha256']}.jpg"),)) for r in rows]
+    ledger = _Ledger(con, "analyze", features.VERSION)
+    quarantined = ledger.quarantined()
+    jobs = [(r["id"], (str(paths.deriv / f"{r['sha256']}.jpg"),)) for r in rows
+            if r["id"] not in quarantined]
     c: Counter = Counter()
+    if len(jobs) < len(rows):
+        c["quarantined"] = len(rows) - len(jobs)
 
     def on_result(pid: int, f: dict) -> None:
+        f = ledger.end(pid, f)
         if "phash" in f:
             con.execute("INSERT OR REPLACE INTO features(photo_id, data) VALUES(?,?)", (pid, json.dumps(f)))
             c["ok"] += 1
         else:
-            c["error"] += 1
+            c[f.get("status", "error")] += 1
         con.commit()
 
     t = time.time()
-    run_isolated(features.compute, jobs, workers, on_result)
+    ledger.run(features.compute, jobs, workers, on_result, config.FEATURE_DEADLINE_S)
     c["seconds"] = round(time.time() - t, 2)
     db.record_timing(con, event, "analyze", time.time() - t)
     return c
@@ -284,16 +354,26 @@ def export(con: sqlite3.Connection, event: str, out_root: Path, workers: int | N
         if own_tmp.fullmatch(tmp.name) and tmp.is_file():
             tmp.unlink()
             tmp_removed += 1
+    ledger = _Ledger(con, "export", decode.DECODER_VERSION)
+    quarantined = ledger.quarantined()
+    results: dict[int, dict] = {}
+
+    def record(pid: int, res: dict) -> None:  # full detail, including the source link, stays in the DB
+        results[pid] = res
+        con.execute("INSERT INTO exports(photo_id, out_path, status, detail) VALUES(?,?,?,?)",
+                    (pid, str(names[pid]), res.get("status"), json.dumps(res)))
+        con.commit()  # result and attempt outcome in one transaction
+
     jobs, names = [], {}
     for k, r in enumerate(rows, 1):
         out = base / "print_ready" / f"{prefix}_{k:04d}.jpg"
         names[r["id"]] = out
-        jobs.append((r["id"], (r["path"], json.loads(r["data"]), str(out), r["sha256"])))
-    results = run_isolated(task_export, jobs, workers)
-    for pid, res in results.items():  # full detail, including the source link, stays in the DB
-        con.execute("INSERT INTO exports(photo_id, out_path, status, detail) VALUES(?,?,?,?)",
-                    (pid, str(names[pid]), res.get("status"), json.dumps(res)))
-    con.commit()
+        if r["id"] in quarantined:
+            record(r["id"], worker_error("TwoStrikes", "E_QUARANTINED"))
+        else:
+            jobs.append((r["id"], (r["path"], json.loads(r["data"]), str(out), r["sha256"])))
+    ledger.run(task_export, jobs, workers, lambda pid, res: record(pid, ledger.end(pid, res)),
+               config.EXPORT_DEADLINE_S)
     # D7: the export folder goes to the print lab. Output names and opaque IDs only:
     # no source path, file name, SHA-256 or capture time.
     with open(base / "manifests" / "selection.csv", "w", newline="", encoding="utf-8") as f:
@@ -336,11 +416,13 @@ def integrity(con: sqlite3.Connection, event: str, report_dir: Path | None = Non
 
 # ---------------------------------------------------------------- summary (aggregate-only)
 
-PHOTO_STATUSES = ("discovered", "excluded", "unavailable", "ok", "import_error", "missing")
-ERROR_CODES = ("E_DECODE", "E_CRASH", "E_SOURCE_CHANGED", "E_WORKER")
+PHOTO_STATUSES = ("discovered", "excluded", "unavailable", "ok", "import_error", "missing",
+                  "timeout", "crashed", "quarantined")
+ERROR_CODES = ("E_DECODE", "E_CRASH", "E_SOURCE_CHANGED", "E_WORKER", "E_TIMEOUT", "E_QUARANTINED")
 GROUP_KINDS = ("exact", "near", "burst")
 CROP_RISKS = ("likely_safe", "needs_review", "crop_conflict")
-EXPORT_STATUSES = ("done", "skipped_existing", "error", "unavailable", "crashed")
+EXPORT_STATUSES = ("done", "skipped_existing", "error", "unavailable", "crashed", "timeout",
+                   "quarantined")
 STAGES = ("scan", "ingest", "analyze", "rank", "crops", "export", "integrity")
 # ranking.score reasons are free text; map them onto a closed set of codes
 REASON_CODES = (("face(s)", "FACES"), ("soft focus", "SOFT"), ("exposure", "EXPOSURE"),

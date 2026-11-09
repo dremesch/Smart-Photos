@@ -1,4 +1,4 @@
-"""Decoding contract + crash-isolated subprocess pool (ADR-0003, ADR-0006).
+"""Decoding contract + crash- and hang-isolated subprocess pool (ADR-0003, ADR-0006, S2-D8).
 
 Everything that touches source bytes runs in worker processes via `run_isolated`.
 Workers write derivatives to the cache themselves, so pixels never cross IPC.
@@ -10,9 +10,11 @@ import hashlib
 import io
 import json
 import os
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from concurrent.futures.process import BrokenProcessPool
+import time
+from collections import deque
+from itertools import count
 from multiprocessing import get_context
+from multiprocessing.connection import wait
 from pathlib import Path
 from typing import Any, Callable
 
@@ -22,6 +24,9 @@ from . import config, quiet
 from .inventory import current_state, is_openable
 
 _HEIF_REGISTERED = False
+
+# Bump when decoding behaviour changes: quarantined items get a fresh chance (issue #11).
+DECODER_VERSION = "poc-decode-1"
 
 EXIF_IFD = 0x8769
 GPS_IFD = 0x8825
@@ -122,6 +127,8 @@ def task_ingest(path: str, cache_root: str) -> dict:
     """Pass-2 work for one file: re-check cloud state, hash, decode once, write derivatives."""
     if os.environ.get("FPC_POC_CRASH_MARKER") and os.environ["FPC_POC_CRASH_MARKER"] in path:
         os.abort()  # simulate a native decoder segfault
+    if os.environ.get("FPC_POC_HANG_MARKER") and os.environ["FPC_POC_HANG_MARKER"] in path:
+        time.sleep(3600)  # simulate a decoder stuck in a loop (POC only, D5; never in src/)
     state = current_state(path)
     if not is_openable(state):
         return {"status": "unavailable", "cloud_state": state}
@@ -158,58 +165,188 @@ def task_ingest(path: str, cache_root: str) -> dict:
 
 # ---------------------------------------------------------------- isolation pool
 
+_STATUS_OF_CODE = {"E_TIMEOUT": "timeout", "E_CRASH": "crashed", "E_QUARANTINED": "quarantined"}
 
-def worker_error(e: BaseException) -> dict:
-    """A per-item failure: the exception class and an error code, never str(e).
+
+def worker_error(e: BaseException | str, code: str = "E_WORKER") -> dict:
+    """THE constructor for a per-item failure: the exception class (or a fixed class name for
+    pool events) and an error code, never str(e). The status follows from the code.
 
     Third-party messages (Pillow, pillow-heif, OSError) routinely embed the source path.
     """
-    return {"status": "error", "error_class": type(e).__name__, "error_code": "E_WORKER"}
+    cls = e if isinstance(e, str) else type(e).__name__
+    return {"status": _STATUS_OF_CODE.get(code, "error"), "error_class": cls, "error_code": code}
+
+
+def serve(rx, tx) -> None:
+    """Worker loop (started by ``quiet.worker_main``): announce readiness, then run one task
+    at a time until the parent sends None or goes away."""
+    tx.send(("ready", None, None))
+    while True:
+        try:
+            msg = rx.recv()
+        except (EOFError, OSError):
+            return
+        if msg is None:
+            return
+        seq, fn, args = msg
+        try:
+            out = fn(*args)
+        except Exception as e:  # noqa: BLE001 - per-item failure
+            out = worker_error(e)
+        try:
+            tx.send(("done", seq, out))
+        except Exception as e:  # noqa: BLE001 - e.g. an unpicklable result
+            tx.send(("done", seq, worker_error(e)))
+
+
+class _Worker:
+    """One long-lived process with its own pipe pair and at most one task in flight.
+
+    Two one-way pipes, not one duplex pipe: on POSIX a duplex Pipe is a socketpair, which
+    the network guard (installed in the main process) refuses; a one-way Pipe is os.pipe.
+    """
+
+    def __init__(self, ctx):
+        from . import quiet
+
+        self.conn, child_tx = ctx.Pipe(duplex=False)  # results: worker -> parent
+        child_rx, self.tx = ctx.Pipe(duplex=False)  # tasks: parent -> worker
+        self.proc = ctx.Process(target=quiet.worker_main, args=(child_rx, child_tx), daemon=True)
+        self.proc.start()
+        child_rx.close()
+        child_tx.close()
+        self.spawned = time.monotonic()
+        self.ready = False
+        self.task: tuple[int, Any, float] | None = None  # (seq, key, started)
+
+    def kill(self) -> None:
+        """Process.kill(): SIGKILL on POSIX, TerminateProcess on Windows. Closing our end of
+        the pipe means nothing the dead worker wrote can be read afterwards."""
+        if self.proc.is_alive():
+            self.proc.kill()
+        self.proc.join(timeout=10)
+        self.conn.close()
+        self.tx.close()
+
+    def stop(self) -> None:
+        try:
+            self.tx.send(None)
+        except (OSError, ValueError):
+            pass
+        self.proc.join(timeout=2)
+        self.kill()
+
+
+class WorkerStartError(RuntimeError):
+    """A worker never became ready: the install is broken, no single file is to blame."""
 
 
 def run_isolated(
-    fn: Callable[..., dict],
+    fn: Callable[..., Any],
     jobs: list[tuple[Any, tuple]],
     workers: int | None = None,
-    on_result: Callable[[Any, dict], None] | None = None,
-) -> dict[Any, dict]:
-    """Run fn(*args) for each (key, args) in subprocesses.
+    on_result: Callable[[Any, Any], None] | None = None,
+    *,
+    on_start: Callable[[Any], None] | None = None,
+    deadline: float | None = None,
+    grace: float | None = None,
+) -> dict[Any, Any]:
+    """Run fn(*args) for each (key, args) in long-lived subprocess workers (S2-D8).
 
-    A hard crash (segfault/abort) breaks the pool; we then re-run every unfinished job
-    alone in a fresh single-worker pool to pinpoint the crasher. Crashers get
-    {"status": "crashed"}; all other jobs still complete.
+    Each worker has its own pipe and one task in flight. ``on_start(key)`` runs just before
+    a task is sent (the pipeline writes its attempt-started row there). A worker still busy
+    ``deadline + grace`` seconds after dispatch is killed and replaced; its item gets
+    ``worker_error("DeadlineExceeded", "E_TIMEOUT")``. A worker that dies mid-task gives
+    ``worker_error("WorkerDied", "E_CRASH")``. Every other item still completes.
+
+    ``on_result`` runs in this process. If it raises, the exception propagates (after all
+    workers are killed); it is never turned into an item error or called again for the item.
     """
+    if not jobs:
+        return {}
+    from . import config
+
     workers = workers or max(1, min(4, (os.cpu_count() or 2) - 1))
+    deadline = config.DECODE_DEADLINE_S if deadline is None else deadline
+    grace = config.KILL_GRACE_S if grace is None else grace
+    limit = deadline + grace
     ctx = get_context("spawn")
-    results: dict[Any, dict] = {}
+    results: dict[Any, Any] = {}
+    pending = deque(jobs)
+    seqs = count()
+    pool: list[_Worker] = []
 
-    def record(k, r):
-        results[k] = r
+    def finish(key, res) -> None:
+        results[key] = res
         if on_result:
-            on_result(k, r)
+            on_result(key, res)
 
-    pending = list(jobs)
+    def replace(w: _Worker) -> None:
+        w.kill()  # reaped before its replacement starts: the worker count stays bounded
+        pool.remove(w)
+        if len(pending) > sum(x.task is None for x in pool):
+            pool.append(_Worker(ctx))
+
     try:
-        with ProcessPoolExecutor(max_workers=workers, mp_context=ctx, initializer=quiet.worker_init) as ex:
-            futs = {ex.submit(fn, *args): key for key, args in pending}
-            for f in as_completed(futs):
-                k = futs[f]
+        for _ in range(min(workers, len(jobs))):
+            pool.append(_Worker(ctx))  # one at a time: a failed start still cleans up the rest
+        while pending or any(w.task for w in pool):
+            for w in list(pool):  # dispatch to idle, ready workers
+                if w.ready and w.task is None and pending:
+                    key, args = pending.popleft()
+                    if on_start:
+                        on_start(key)
+                    seq = next(seqs)
+                    try:
+                        w.tx.send((seq, fn, args))
+                    except (OSError, ValueError):  # the worker died between tasks
+                        replace(w)
+                        finish(key, worker_error("WorkerDied", "E_CRASH"))
+                        continue
+                    w.task = (seq, key, time.monotonic())
+
+            now = time.monotonic()
+            due = [w.task[2] + limit for w in pool if w.task]
+            due += [w.spawned + config.WORKER_START_S for w in pool if not w.ready]
+            timeout = max(0.0, min(due) - now) if due else None
+            ready = set(wait([w.conn for w in pool] + [w.proc.sentinel for w in pool], timeout))
+
+            for w in list(pool):
+                if w.conn not in ready and w.proc.sentinel not in ready:
+                    continue
+                dead = False
                 try:
-                    record(k, f.result())
-                except BrokenProcessPool:
-                    raise
-                except Exception as e:  # noqa: BLE001 - per-item failure
-                    record(k, worker_error(e))
-    except BrokenProcessPool:
-        for key, args in pending:
-            if key in results:
-                continue
-            try:
-                with ProcessPoolExecutor(max_workers=1, mp_context=ctx, initializer=quiet.worker_init) as ex1:
-                    record(key, ex1.submit(fn, *args).result())
-            except BrokenProcessPool:
-                record(key, {"status": "crashed", "error_class": "BrokenProcessPool",
-                             "error_code": "E_CRASH"})
-            except Exception as e:  # noqa: BLE001
-                record(key, worker_error(e))
+                    while w.conn.poll():
+                        kind, seq, res = w.conn.recv()
+                        if kind == "ready":
+                            w.ready = True
+                        elif w.task and seq == w.task[0]:
+                            key, w.task = w.task[1], None
+                            finish(key, res)
+                        # anything else is a stale reply: ignored
+                except (EOFError, OSError):
+                    dead = True
+                if dead or not w.proc.is_alive():
+                    task, w.task = w.task, None
+                    if not w.ready:
+                        raise WorkerStartError
+                    replace(w)
+                    if task:
+                        finish(task[1], worker_error("WorkerDied", "E_CRASH"))
+
+            now = time.monotonic()
+            for w in list(pool):
+                if w.task and now >= w.task[2] + limit:
+                    task, w.task = w.task, None
+                    replace(w)
+                    finish(task[1], worker_error("DeadlineExceeded", "E_TIMEOUT"))
+                elif not w.ready and now >= w.spawned + config.WORKER_START_S:
+                    raise WorkerStartError
+    finally:
+        for w in pool:
+            if w.task:
+                w.kill()
+            else:
+                w.stop()
     return results

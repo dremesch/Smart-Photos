@@ -189,7 +189,7 @@ class Main(QMainWindow):
         if view == "Recommended":
             q = base + "AND s.recommended=1 ORDER BY s.rec_order"
         elif view == "Import problems":
-            q = base + "AND p.status IN ('import_error','unavailable','missing') ORDER BY p.rel"
+            q = base + "AND p.status IN ('import_error','unavailable','missing','timeout','crashed','quarantined') ORDER BY p.rel"
         elif view == "Crop review":
             q = base + "AND c.risk IN ('needs_review','crop_conflict') ORDER BY c.risk, p.capture_ts"
         elif view == "Group of selected" and self._group_anchor:

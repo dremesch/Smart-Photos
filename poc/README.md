@@ -50,11 +50,16 @@ The export folder carries output names and opaque photo IDs only. Source details
 
 Re-running is safe and incremental. Interrupting with Ctrl+C or closing the window loses no decisions.
 
+**Hung or crashing decoders cannot stall a run** (issue #11, S2-D8, D4). Ingest, features and export run in long-lived `spawn` worker processes, each with its own pipe pair and one task in flight. A worker still busy `deadline + 5 s` after dispatch is killed (`Process.kill()`, which is TerminateProcess on Windows) and respawned; the item gets status `timeout` and code `E_TIMEOUT`. A worker that dies mid-task gives `crashed` / `E_CRASH`. Every other item completes. Deadlines are in `config.py`: 30 s for ingest (decode), 60 s for features and for export, 5 s grace; `FPC_POC_DECODE_DEADLINE_S`, `FPC_POC_FEATURE_DEADLINE_S`, `FPC_POC_EXPORT_DEADLINE_S` and `FPC_POC_KILL_GRACE_S` override them. The clock starts when a task is sent to a ready worker, so `spawn` start-up time never counts against it.
+
+Before each task is sent, an *attempt started* row is committed to the `attempts` table; the result handler writes its outcome in the same transaction as the result. A **strike** is a timeout, a crash, or an attempt row left open by a parent that was killed mid-task (power loss, TerminateProcess). A `timeout` or `crashed` item is retried on the next `run`; **two strikes** make it `quarantined` (`E_QUARANTINED`), and later runs skip it until `decode.DECODER_VERSION` (or `features.VERSION` for the features stage) changes. A graceful Ctrl+C closes in-flight attempts as `interrupted`, which is not a strike. `status` and `summary` count `timeout`, `crashed` and `quarantined`. A worker also exits by itself when its parent dies, so a hung decoder does not outlive a killed run (it needs the GIL to do so; a native hang that holds the GIL would survive the parent).
+
 ### Try it without personal photos
 
 ```powershell
 python tools\make_sample_event.py "$env:TEMP\fpc-sample"   # add --canary TOKEN to plant leak canaries
 $env:FPC_POC_CRASH_MARKER = "CRASHME"       # makes one file crash the decoder on purpose
+$env:FPC_POC_HANG_MARKER = "HANGME"         # makes one file hang the decoder (killed after the deadline)
 python -m fpc_poc --data "$env:TEMP\fpc-data" run --event Sample "$env:TEMP\fpc-sample" --auto-approve 8 --out "$env:TEMP\fpc-prints"
 python -m fpc_poc --data "$env:TEMP\fpc-data" review --event Sample
 ```
@@ -64,7 +69,7 @@ python -m fpc_poc --data "$env:TEMP\fpc-data" review --event Sample
 ### Tests
 
 ```powershell
-pytest poc\tests -q      # 253 tests, including an end-to-end run on the synthetic event and the canary leak scan
+pytest poc\tests -q      # 268 tests, including an end-to-end run on the synthetic event and the canary leak scan
 ```
 
 ---
@@ -76,6 +81,7 @@ pytest poc\tests -q      # 253 tests, including an end-to-end run on the synthet
 | Inventory must not hydrate OneDrive (ADR-0004) | Pass 1 uses `os.scandir` and `st_file_attributes` only. Recall flags block every later open. Attributes are re-checked before each read. | `inventory.py`, `test_cloud_state`. **Needs a real OneDrive check (M0).** |
 | One decoding contract, orientation applied once (ADR-0006) | JPEG EXIF 6 portrait decodes to 1512×2016. With pillow-heif 1.8, HEIC transforms are applied and EXIF orientation is reset to 1, so double rotation cannot happen with this library version. | `test_e2e_orientation`, manual probe |
 | A decoder crash must not kill the batch (ADR-0003) | A file that aborts its worker is marked `crashed`. Every other file completes. | `test_e2e_hostile_files_isolated` |
+| A hung decoder must not stall the batch (issue #11, S2-D8) | A file that hangs its worker is killed after deadline plus grace and marked `timeout`; the worker is respawned and every other file completes. Two strikes quarantine an item until the decoder version changes, including a strike left by a parent killed mid-task. | `test_e2e_hung_decoder_times_out_and_every_other_item_completes`, `test_isolation.py` |
 | Corrupt, excluded and Live Photo files | A truncated JPEG gives `import_error`. PNG, MOV and TXT are `excluded`. HEIC and MOV pairs are linked. | same |
 | Full-collection analysis picks the right burst frame (ADR-0005) | In a 6-photo group, the closed-eyes frame ranks **last**. The sharp eyes-open frames rank top and the near-tie is flagged ambiguous. A second phone's shot joins as `near`, never `burst`. | `test_e2e_burst_blink_not_chosen` |
 | Duplicates | The exact copy is grouped as `exact`. The messaging-app copy (800×600, no EXIF) is grouped with its original and ranks below it. | `test_e2e_exact_and_messaging_copies_grouped` |
@@ -105,7 +111,7 @@ Straight-line extrapolation for 5,000 photos with 4 workers is about 30 minutes 
 2. **The embedding is a placeholder.** Near-duplicate grouping currently leans on pHash plus a colour/layout vector. A real embedding model (SigLIP/DINOv2-class) is needed for "same scene, different framing" and for diversity.
 3. **Crops need high-resolution detection.** Faces are detected on the 1024 px derivative, so small faces in group shots will be missed. Spec §12.4 requires high-resolution or tiled detection for approved photos. The POC does not do this.
 4. **HEIF colour is incomplete.** Only ICC profiles are converted. `nclx`-only HEIC (common on iPhone, Display P3) is treated as sRGB. Real iPhone files are needed to validate this.
-5. **Hung decoders are not handled.** A crash is contained, but a decoder that hangs would stall the pool. Per-task timeouts with worker kill are required (production decoder pool).
+5. **Hung decoders: handled in the POC since issue #11** (deadline, kill, respawn, two-strikes quarantine). The production decoder pool (Track B, S2-03) still needs its own design (WP-3 LLD, #33), and Windows TerminateProcess and `spawn` respawn cost must be measured on the target PC.
 6. **Timestamps**: naive parse only. There are no per-device clock offsets, and Apple `BurstUUID` / `ContentIdentifier` are not read because ExifTool is not wired in.
 7. **The OneDrive guard uses `%OneDrive%` environment variables**, not the registry sync-root list.
 8. **Ranking weights and grouping thresholds are guesses**, tuned only on synthetic data.
@@ -117,20 +123,21 @@ poc/
   fpc_poc/
     __main__.py   CLI: run, rank, crops, export, review, status, integrity, summary; top-level handler
     leakscan.py   canary / absolute-path / timestamp scanner (counts only), reused by the pre-USB gate
-    quiet.py      sanitised warnings and worker stderr, SIGINT ignored in workers
+    quiet.py      sanitised warnings and worker stderr, SIGINT ignored, pool worker entry point
     config.py     paths and uncalibrated thresholds
     inventory.py  pass 1: attributes only, cloud state, Live Photo pairing
-    decode.py     load_oriented() contract, sRGB, ingest task, crash-isolated pool
+    decode.py     load_oriented() contract, sRGB, ingest task, crash- and hang-isolated pool
     features.py   pHash, quality, Haar faces/eyes/cats, toy embedding, saliency
     grouping.py   exact / near / burst, complete linkage in time windows
     ranking.py    per-photo score + reasons, greedy album recommendation
     crop.py       exact 3:2 geometry, invariant, 1-D search, risk classes
     export.py     render, sRGB ICC, strip metadata, atomic write, verify
     pipeline.py   stage orchestration; main process is the single DB writer
-    db.py         flat SQLite schema, append-only decisions + projection
+    db.py         flat SQLite schema, append-only decisions + projection, attempt ledger
     guard.py      socket guard
     ui.py         PySide6 review grid, preview with overlays, crop drag
   tools/make_sample_event.py   synthetic event covering every risky path
   tests/test_poc.py            unit + end-to-end tests
   tests/test_leaks.py          canary and leak tests (issue #13)
+  tests/test_isolation.py      deadline, kill, respawn and two-strikes quarantine (issue #11)
 ```
